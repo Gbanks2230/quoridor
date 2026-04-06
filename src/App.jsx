@@ -511,9 +511,134 @@ function ModePickerScreen({onSelect,onBack}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PLAYER NAME SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function PlayerNameScreen({vsAI, onStart, onBack}){
+  const[vis,setVis]=useState(false);
+  const[n1,setN1]=useState("");
+  const[n2,setN2]=useState("");
+  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
+
+  const canStart = n1.trim().length>0 && (vsAI || n2.trim().length>0);
+
+  return(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:24,padding:24}}>
+
+      <div style={{textAlign:"center",
+        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(-12px)",transition:"all .4s"}}>
+        <div style={{fontSize:26,fontWeight:900,color:GOLD,marginBottom:6}}>
+          {vsAI?"Your Name":"Player Names"}
+        </div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,.35)"}}>
+          {vsAI?"What should we call you?":"Enter both player names to begin"}
+        </div>
+      </div>
+
+      <div style={{
+        display:"flex",flexDirection:"column",gap:14,
+        width:"100%",maxWidth:300,
+        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(14px)",
+        transition:"all .45s ease .1s",
+      }}>
+        {/* P1 input */}
+        <div>
+          <div style={{fontSize:10,fontWeight:800,color:P1C,
+            letterSpacing:".1em",marginBottom:6}}>
+            {vsAI?"YOUR NAME":"PLAYER 1 · TEAL"}
+          </div>
+          <input
+            value={n1}
+            onChange={e=>setN1(e.target.value)}
+            maxLength={12}
+            placeholder={vsAI?"Enter your name…":"e.g. Alex"}
+            autoFocus
+            style={{
+              width:"100%",padding:"14px 16px",borderRadius:12,
+              border:`2px solid ${n1.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
+              background:"rgba(255,255,255,.07)",
+              color:"#fff",fontSize:15,fontWeight:700,fontFamily:F,
+              outline:"none",transition:"border-color .2s",
+            }}
+          />
+        </div>
+
+        {/* P2 input — only for 2P mode */}
+        {!vsAI&&(
+          <div>
+            <div style={{fontSize:10,fontWeight:800,color:P2C,
+              letterSpacing:".1em",marginBottom:6}}>
+              PLAYER 2 · PINK
+            </div>
+            <input
+              value={n2}
+              onChange={e=>setN2(e.target.value)}
+              maxLength={12}
+              placeholder="e.g. Jordan"
+              style={{
+                width:"100%",padding:"14px 16px",borderRadius:12,
+                border:`2px solid ${n2.trim()?P2C+"80":"rgba(255,255,255,.1)"}`,
+                background:"rgba(255,255,255,.07)",
+                color:"#fff",fontSize:15,fontWeight:700,fontFamily:F,
+                outline:"none",transition:"border-color .2s",
+              }}
+            />
+          </div>
+        )}
+
+        {/* AI label preview */}
+        {vsAI&&(
+          <div style={{
+            display:"flex",alignItems:"center",gap:12,
+            padding:"14px 16px",borderRadius:12,
+            background:"rgba(255,255,255,.04)",
+            border:"1px solid rgba(255,255,255,.07)",
+          }}>
+            <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,
+              background:`radial-gradient(circle at 35% 28%,${P2L},${P2C} 50%,${P2D})`}}/>
+            <div>
+              <div style={{fontSize:12,fontWeight:800,color:"rgba(255,255,255,.5)"}}>OPPONENT</div>
+              <div style={{fontSize:14,fontWeight:900,color:P2C}}>🤖 AI</div>
+            </div>
+          </div>
+        )}
+
+        {/* Start button */}
+        <button
+          onClick={()=>{
+            if(!canStart) return;
+            onStart(
+              n1.trim()||"Player 1",
+              vsAI?"AI":(n2.trim()||"Player 2")
+            );
+          }}
+          style={{
+            marginTop:4,padding:"16px",borderRadius:14,border:"none",
+            cursor:canStart?"pointer":"not-allowed",fontFamily:F,
+            background:canStart?GOLDBTN:"rgba(255,255,255,.1)",
+            color:canStart?"#3c2200":"rgba(255,255,255,.25)",
+            fontWeight:900,fontSize:15,letterSpacing:".04em",
+            boxShadow:canStart?`0 6px 26px ${GOLD}45`:"none",
+            transition:"all .15s",
+          }}>
+          LET'S PLAY →
+        </button>
+      </div>
+
+      <button onClick={onBack}
+        style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",
+          border:"none",cursor:"pointer",fontFamily:F,fontWeight:600}}>
+        ‹ Back
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GAME SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-function GameScreen({onBack,initialState,onSave,settings,vsAI}){
+function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
   const[g,setG]=useState(()=>initialState||INIT());
   const[hov,setHov]=useState(null);
   const[camRx,setCamRx]=useState(0);
@@ -668,7 +793,9 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI}){
             boxShadow:isActive?`0 0 16px ${base}90,0 0 32px ${base}28`:`0 3px 8px rgba(0,0,0,.6)`,
             transition:"box-shadow .3s"}}/>
           <div style={{textAlign:"center",lineHeight:1.2}}>
-            <div style={{fontSize:11,fontWeight:900,color:isActive?base:"rgba(255,255,255,.3)"}}>P{pi+1}</div>
+            <div style={{fontSize:11,fontWeight:900,color:isActive?base:"rgba(255,255,255,.3)"}}>
+              {names?.[pi]||PN[pi]}
+            </div>
             <div style={{fontSize:9,fontWeight:700,color:isActive?base:"rgba(255,255,255,.2)"}}>
               {vsAI&&pi===1?"AI":PN[pi]}
             </div>
@@ -930,7 +1057,9 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI}){
                 display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,paddingTop:3}}>🏆</div>
             </div>
             <div style={{fontSize:8,fontWeight:900,letterSpacing:".2em",color:PC[g.winner],marginBottom:2}}>WINNER</div>
-            <div style={{fontSize:28,fontWeight:900,color:"rgba(255,255,255,.95)",lineHeight:1,marginBottom:2}}>PLAYER {g.winner+1}</div>
+            <div style={{fontSize:28,fontWeight:900,color:"rgba(255,255,255,.95)",lineHeight:1,marginBottom:2}}>
+              {names?.[g.winner]||`PLAYER ${g.winner+1}`}
+            </div>
             <div style={{fontSize:18,fontWeight:900,color:PC[g.winner],marginBottom:14}}>{PN[g.winner]}</div>
             <div style={{display:"flex",gap:8}}>
               <button onClick={newGame} className="gb" style={{flex:1,padding:"12px",borderRadius:12,border:"none",
@@ -955,6 +1084,7 @@ export default function App(){
   const[screen,setScreen]=useState("splash");
   const[savedGame,setSavedGame]=useState(null);
   const[vsAI,setVsAI]=useState(false);
+  const[playerNames,setPlayerNames]=useState(["Player 1","Player 2"]);
   const[settings,setSettings]=useState({
     soundFx:true,music:false,haptics:true,
     showHints:true,animatePawns:true,highContrast:false,
@@ -977,13 +1107,21 @@ export default function App(){
           onSelect={mode=>{
             setVsAI(mode==="ai");
             setSavedGame(null);
+            setScreen("namepick");
+          }}/>}
+      {screen==="namepick" &&<PlayerNameScreen
+          vsAI={vsAI}
+          onBack={()=>setScreen("modepick")}
+          onStart={(n1,n2)=>{
+            setPlayerNames([n1,n2]);
             setScreen("game");
           }}/>}
       {screen==="game"     &&<GameScreen initialState={savedGame}
           onBack={()=>setScreen("menu")}
           onSave={s=>setSavedGame(s)}
           settings={settings}
-          vsAI={vsAI}/>}
+          vsAI={vsAI}
+          names={playerNames}/>}
       {screen==="howto"    &&<HowToPlayScreen onBack={()=>setScreen("menu")}/>}
       {screen==="settings" &&<SettingsScreen onBack={()=>setScreen("menu")} settings={settings} onChange={upd}/>}
     </>
