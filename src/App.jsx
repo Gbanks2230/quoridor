@@ -98,7 +98,6 @@ const INIT=()=>({
 // AI LOGIC
 // ─────────────────────────────────────────────────────────────────────────────
 
-// BFS returning the full path as array of [r,c] steps, or null if no path
 function bfsPath(sr,sc,goal,hW,vW){
   const v=Array.from({length:9},()=>Array(9).fill(false));
   const q=[[sr,sc,[[sr,sc]]]]; v[sr][sc]=true;
@@ -115,36 +114,8 @@ function bfsPath(sr,sc,goal,hW,vW){
   return null;
 }
 
-function aiPickMove(g){
-  const ai=g.players[1], human=g.players[0];
-  const hW=g.hW, vW=g.vW;
-
-  // Paths for both players
-  const aiPath=bfsPath(ai.row,ai.col,8,hW,vW);
-  const humanPath=bfsPath(human.row,human.col,0,hW,vW);
-
-  const aiDist=aiPath?aiPath.length-1:99;
-  const humanDist=humanPath?humanPath.length-1:99;
-
-  // If AI can win this move — do it
-  if(aiPath&&aiPath[1]&&aiPath[1][0]===8) return{type:"move",row:8,col:aiPath[1][1]};
-
-  // Try to place a wall to slow human if human is closer than AI and AI has walls
-  if(ai.walls>0 && humanDist<=aiDist+2 && humanPath&&humanPath.length>2){
-    // Try H walls blocking human's next step
-    const best=tryBlockingWall(human,humanPath,hW,vW,g.players);
-    if(best) return best;
-  }
-
-  // Otherwise just move along AI's shortest path
-  if(aiPath&&aiPath[1]){
-    return{type:"move",row:aiPath[1][0],col:aiPath[1][1]};
-  }
-  return null;
-}
-
-function tryBlockingWall(human,humanPath,hW,vW,players){
-  // Try to place a wall that extends human's path as much as possible
+function findBestBlock(human,humanPath,hW,vW,players){
+  // Find the wall placement that maximises extra steps for human
   let bestWall=null, bestGain=0;
   for(let wr=0;wr<8;wr++){
     for(let wc=0;wc<8;wc++){
@@ -159,7 +130,52 @@ function tryBlockingWall(human,humanPath,hW,vW,players){
       }
     }
   }
-  return bestGain>=2?bestWall:null; // only block if it costs human 2+ extra steps
+  return {wall:bestWall, gain:bestGain};
+}
+
+function aiPickMove(g){
+  const ai=g.players[1], human=g.players[0];
+  const hW=g.hW, vW=g.vW;
+
+  const aiPath   = bfsPath(ai.row,   ai.col,   8, hW, vW);
+  const humanPath= bfsPath(human.row, human.col, 0, hW, vW);
+
+  const aiDist    = aiPath    ? aiPath.length-1    : 99;
+  const humanDist = humanPath ? humanPath.length-1 : 99;
+
+  // AI can win this move — take it immediately
+  if(aiPath && aiPath[1] && aiPath[1][0]===8)
+    return {type:"move", row:8, col:aiPath[1][1]};
+
+  // Human is 1 move from winning — must block if possible
+  if(humanDist<=1 && ai.walls>0){
+    const {wall}=findBestBlock(human,humanPath,hW,vW,g.players);
+    if(wall) return wall;
+  }
+
+  // Human is 2 moves from winning — try to block
+  if(humanDist<=2 && ai.walls>0){
+    const {wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);
+    if(wall && gain>=1) return wall;
+  }
+
+  // Human is significantly closer to goal than AI — block aggressively
+  if(ai.walls>0 && humanDist < aiDist-1){
+    const {wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);
+    if(wall && gain>=2) return wall;
+  }
+
+  // Human is ahead overall — still try to slow them down a bit
+  if(ai.walls>0 && humanDist<=5){
+    const {wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);
+    if(wall && gain>=3) return wall;
+  }
+
+  // Otherwise advance along AI's shortest path
+  if(aiPath && aiPath[1])
+    return {type:"move", row:aiPath[1][0], col:aiPath[1][1]};
+
+  return null;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 function Pawn({pi}){
