@@ -70,6 +70,91 @@ const SFX = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BACKGROUND MUSIC  (synthesized ambient loop, no files)
+// ─────────────────────────────────────────────────────────────────────────────
+let _music = null;
+
+function startMusic(){
+  if(_music) return;
+  try{
+    const ac = ctx();
+    const master = ac.createGain();
+    master.gain.setValueAtTime(0.045, ac.currentTime); // low so it doesn't fight SFX
+    master.connect(ac.destination);
+
+    // Chord notes: calm pentatonic  D-F#-A-C#
+    const chordFreqs = [146.8, 185.0, 220.0, 277.2, 329.6, 369.9];
+    const nodes = [];
+
+    chordFreqs.forEach((freq, i)=>{
+      const osc = ac.createOscillator();
+      const gain = ac.createGain();
+      const lfo = ac.createOscillator(); // slow volume tremolo
+      const lfoGain = ac.createGain();
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ac.currentTime);
+
+      lfo.type = "sine";
+      lfo.frequency.setValueAtTime(0.18 + i*0.04, ac.currentTime);
+      lfoGain.gain.setValueAtTime(0.012, ac.currentTime);
+
+      lfo.connect(lfoGain);
+      lfoGain.connect(gain.gain);
+      gain.gain.setValueAtTime(0.1 + (i%2===0?0.04:0), ac.currentTime);
+
+      osc.connect(gain);
+      gain.connect(master);
+
+      osc.start();
+      lfo.start();
+      nodes.push(osc, lfo);
+    });
+
+    // Slow rising bass note pulse every ~4s
+    const bassLoop = ()=>{
+      if(!_music) return;
+      try{
+        const b = ac.createOscillator();
+        const bg = ac.createGain();
+        b.type = "sine";
+        b.frequency.setValueAtTime(73.4, ac.currentTime); // low D
+        bg.gain.setValueAtTime(0.0, ac.currentTime);
+        bg.gain.linearRampToValueAtTime(0.055, ac.currentTime+1.5);
+        bg.gain.linearRampToValueAtTime(0.0, ac.currentTime+3.8);
+        b.connect(bg); bg.connect(master);
+        b.start(); b.stop(ac.currentTime+4);
+      }catch(e){}
+      setTimeout(bassLoop, 4200);
+    };
+    bassLoop();
+
+    _music = {nodes, master};
+  }catch(e){}
+}
+
+function stopMusic(){
+  if(!_music) return;
+  try{
+    _music.master.gain.setValueAtTime(_music.master.gain.value, ctx().currentTime);
+    _music.master.gain.linearRampToValueAtTime(0, ctx().currentTime+1.5);
+    setTimeout(()=>{
+      try{ _music.nodes.forEach(n=>n.stop()); }catch(e){}
+      _music=null;
+    },1600);
+  }catch(e){ _music=null; }
+}
+
+function MusicController({enabled}){
+  useEffect(()=>{
+    if(enabled) startMusic();
+    else stopMusic();
+    return()=>{};
+  },[enabled]);
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CONFETTI
 // ─────────────────────────────────────────────────────────────────────────────
 function Confetti(){
@@ -517,7 +602,7 @@ function SettingsScreen({onBack,settings,onChange}){
   const secs=[
     {title:"🔊 AUDIO",items:[
       {key:"soundFx",label:"Sound Effects",desc:"Move and wall sounds"},
-      {key:"music",label:"Background Music",desc:"Ambient music during game"},
+      {key:"music",label:"Background Music",desc:"Ambient music during gameplay (on by default)"},
       {key:"haptics",label:"Haptic Feedback",desc:"Vibration on actions"},
     ]},
     {title:"🎮 GAMEPLAY",items:[
@@ -1168,9 +1253,14 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
 
   const isPortrait = vw <= vh;
 
+  // Music
+  const musicEnabled = settings?.music !== false;
+
   if(isPortrait){
     return(
-      <div style={{width:"100vw",height:"100vh",background:TABLE_BG,fontFamily:F,
+      <>
+        <MusicController enabled={musicEnabled}/>
+        <div style={{width:"100vw",height:"100vh",background:TABLE_BG,fontFamily:F,
         display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
         <style>{`@keyframes tilt{0%,100%{transform:rotate(-15deg)}50%{transform:rotate(15deg)}}`}</style>
         <div style={{fontSize:72,animation:"tilt 1.8s ease-in-out infinite"}}>📱</div>
@@ -1186,10 +1276,9 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
           ‹ Back to Menu
         </button>
       </div>
+      </>
     );
   }
-
-  // ── Layout math ───────────────────────────────────────────────────────────
   const LW=vw, LH=vh;
   const PANEL_W = Math.round(Math.max(78, Math.min(96, LW*0.105)));
   const BTN_W = 66;
@@ -1272,17 +1361,17 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
         boxShadow:isActive?`0 0 20px ${base}25`:"none",
       }}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-          <div style={{width:36,height:36,borderRadius:"50%",flexShrink:0,
-            background:`radial-gradient(circle at 35% 28%,${light},${base} 50%,${dark} 90%)`,
-            boxShadow:isActive?`0 0 16px ${base}90,0 0 32px ${base}28`:`0 3px 8px rgba(0,0,0,.6)`,
-            transition:"box-shadow .3s"}}/>
-          <div style={{textAlign:"center",lineHeight:1.2}}>
-            <div style={{fontSize:11,fontWeight:900,color:isActive?base:"rgba(255,255,255,.3)"}}>
-              {names?.[pi]||PN[pi]}
-            </div>
-            <div style={{fontSize:9,fontWeight:700,color:isActive?base:"rgba(255,255,255,.2)"}}>
-              {vsAI&&pi===1?"AI":PN[pi]}
-            </div>
+          {/* Avatar emoji */}
+          <div style={{
+            fontSize:30, lineHeight:1,
+            filter:isActive?`drop-shadow(0 0 8px ${base})`:"grayscale(0.5) opacity(0.6)",
+            transition:"filter .3s",
+          }}>
+            {vsAI&&pi===1?"🤖":"👤"}
+          </div>
+          {/* Name only — no subtitle */}
+          <div style={{fontSize:11,fontWeight:900,color:isActive?base:"rgba(255,255,255,.3)",textAlign:"center",lineHeight:1.2}}>
+            {names?.[pi]||PN[pi]}
           </div>
           {isActive&&!aiThinking&&<div style={{background:base,color:"#fff",fontSize:8,fontWeight:900,
             padding:"3px 8px",borderRadius:99,boxShadow:`0 2px 8px ${base}50`}}>TURN</div>}
@@ -1362,6 +1451,8 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
   };
 
   return(
+    <>
+    <MusicController enabled={musicEnabled}/>
     <div style={{
       width:LW, height:LH,
       background:TABLE_BG, fontFamily:F,
@@ -1651,6 +1742,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -1750,7 +1842,7 @@ export default function App(){
   };
 
   const[settings,setSettings]=useState({
-    soundFx:true,music:false,haptics:true,
+    soundFx:true,music:true,haptics:true,
     showHints:true,animatePawns:true,highContrast:false,
   });
   const upd=(k,v)=>setSettings(p=>({...p,[k]:v}));
