@@ -23,8 +23,8 @@ const WALLT="#C8860A", WALLM="#A86808", WALLB="#7A4C08", WALLHI="#FFD060";
 const CAMS=[
   {id:"top",   label:"TOP",   rx:0,  rz:0},
   {id:"table", label:"TABLE", rx:18, rz:0},
-  {id:"p1",    label:"P1",    rx:32, rz:0},
-  {id:"p2",    label:"P2",    rx:32, rz:180},
+  {id:"p1",    label:"P1",    rx:30, rz:0},
+  {id:"p2",    label:"P2",    rx:30, rz:180},
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,15 +87,18 @@ function canPlace(wr,wc,ori,hW,vW,pl){
   return bfs(pl[0].row,pl[0].col,0,nh,nv)&&bfs(pl[1].row,pl[1].col,8,nh,nv);
 }
 
-const INIT=()=>({
-  players:[{row:8,col:4,walls:10},{row:0,col:4,walls:10}],
-  hW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
-  vW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
-  turn:0, mode:"move", ori:"h", winner:null,
-});
+const INIT=()=>{
+  const first=Math.random()<0.5?0:1;
+  return{
+    players:[{row:8,col:4,walls:10},{row:0,col:4,walls:10}],
+    hW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
+    vW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
+    turn:first, mode:"move", ori:"h", winner:null,
+  };
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AI LOGIC
+// AI LOGIC  (difficulty: "easy" | "medium" | "hard")
 // ─────────────────────────────────────────────────────────────────────────────
 
 function bfsPath(sr,sc,goal,hW,vW){
@@ -115,7 +118,6 @@ function bfsPath(sr,sc,goal,hW,vW){
 }
 
 function findBestBlock(human,humanPath,hW,vW,players){
-  // Find the wall placement that maximises extra steps for human
   let bestWall=null, bestGain=0;
   for(let wr=0;wr<8;wr++){
     for(let wc=0;wc<8;wc++){
@@ -130,50 +132,59 @@ function findBestBlock(human,humanPath,hW,vW,players){
       }
     }
   }
-  return {wall:bestWall, gain:bestGain};
+  return{wall:bestWall,gain:bestGain};
 }
 
-function aiPickMove(g){
+function aiPickMove(g, difficulty="medium"){
   const ai=g.players[1], human=g.players[0];
   const hW=g.hW, vW=g.vW;
+  const aiPath   =bfsPath(ai.row,   ai.col,   8, hW, vW);
+  const humanPath=bfsPath(human.row, human.col, 0, hW, vW);
+  const aiDist   =aiPath    ? aiPath.length-1    : 99;
+  const humanDist=humanPath ? humanPath.length-1 : 99;
 
-  const aiPath   = bfsPath(ai.row,   ai.col,   8, hW, vW);
-  const humanPath= bfsPath(human.row, human.col, 0, hW, vW);
+  // Always win if possible
+  if(aiPath&&aiPath[1]&&aiPath[1][0]===8)
+    return{type:"move",row:8,col:aiPath[1][1]};
 
-  const aiDist    = aiPath    ? aiPath.length-1    : 99;
-  const humanDist = humanPath ? humanPath.length-1 : 99;
-
-  // AI can win this move — take it immediately
-  if(aiPath && aiPath[1] && aiPath[1][0]===8)
-    return {type:"move", row:8, col:aiPath[1][1]};
-
-  // Human is 1 move from winning — must block if possible
-  if(humanDist<=1 && ai.walls>0){
-    const {wall}=findBestBlock(human,humanPath,hW,vW,g.players);
-    if(wall) return wall;
+  // ── EASY: just walk forward, never block ────────────────────────────────
+  if(difficulty==="easy"){
+    // 10% chance of a random sideways step to feel less robotic
+    if(aiPath&&aiPath[1]&&Math.random()<0.1){
+      const vm=getVM(1,g.players,hW,vW);
+      if(vm.length>0){const r=vm[Math.floor(Math.random()*vm.length)];return{type:"move",row:r[0],col:r[1]};}
+    }
+    if(aiPath&&aiPath[1]) return{type:"move",row:aiPath[1][0],col:aiPath[1][1]};
+    return null;
   }
 
-  // Human is 2 moves from winning — try to block
-  if(humanDist<=2 && ai.walls>0){
-    const {wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);
-    if(wall && gain>=1) return wall;
+  // ── MEDIUM: block when human is close or clearly ahead ─────────────────
+  if(difficulty==="medium"){
+    if(humanDist<=1&&ai.walls>0){const{wall}=findBestBlock(human,humanPath,hW,vW,g.players);if(wall)return wall;}
+    if(humanDist<=2&&ai.walls>0){const{wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);if(wall&&gain>=1)return wall;}
+    if(ai.walls>0&&humanDist<aiDist-1){const{wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);if(wall&&gain>=2)return wall;}
+    if(ai.walls>0&&humanDist<=5){const{wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);if(wall&&gain>=3)return wall;}
+    if(aiPath&&aiPath[1]) return{type:"move",row:aiPath[1][0],col:aiPath[1][1]};
+    return null;
   }
 
-  // Human is significantly closer to goal than AI — block aggressively
-  if(ai.walls>0 && humanDist < aiDist-1){
-    const {wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);
-    if(wall && gain>=2) return wall;
+  // ── HARD: very aggressive — blocks early, even when not threatened ──────
+  if(difficulty==="hard"){
+    // Always try to block if it costs human even 1 step and AI has walls
+    if(ai.walls>0&&humanPath){
+      const{wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);
+      // Block if: human close to winning, OR human significantly ahead, OR gain is large
+      const shouldBlock =
+        humanDist<=3 ||
+        humanDist<aiDist ||
+        gain>=4 ||
+        (gain>=2&&Math.random()<0.7); // 70% chance to block even small gains
+      if(wall&&shouldBlock) return wall;
+    }
+    // Also try to find a smarter move — prefer cells that shorten AI path most
+    if(aiPath&&aiPath[1]) return{type:"move",row:aiPath[1][0],col:aiPath[1][1]};
+    return null;
   }
-
-  // Human is ahead overall — still try to slow them down a bit
-  if(ai.walls>0 && humanDist<=5){
-    const {wall,gain}=findBestBlock(human,humanPath,hW,vW,g.players);
-    if(wall && gain>=3) return wall;
-  }
-
-  // Otherwise advance along AI's shortest path
-  if(aiPath && aiPath[1])
-    return {type:"move", row:aiPath[1][0], col:aiPath[1][1]};
 
   return null;
 }
@@ -511,6 +522,292 @@ function ModePickerScreen({onSelect,onBack}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MODE PICKER SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function ModePickerScreen({onSelect,onBack}){
+  const[vis,setVis]=useState(false);
+  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
+  return(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,padding:24}}>
+      <div style={{textAlign:"center",opacity:vis?1:0,transition:"opacity .4s"}}>
+        <div style={{fontSize:26,fontWeight:900,color:GOLD,marginBottom:6}}>NEW GAME</div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,.35)"}}>Choose your game mode</div>
+      </div>
+      <div style={{
+        display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:300,
+        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(16px)",transition:"all .45s ease .1s",
+      }}>
+        {[
+          {label:"2 Players",sub:"Pass & play with a friend",icon:"👥",mode:"2p"},
+          {label:"vs AI",sub:"Play against the computer",icon:"🤖",mode:"ai"},
+          {label:"Tournament",sub:"Compete for glory & coins",icon:"🏆",mode:"tournament",gold:true},
+        ].map(({label,sub,icon,mode,gold})=>(
+          <button key={mode} onClick={()=>onSelect(mode)}
+            style={{
+              display:"flex",alignItems:"center",gap:16,
+              padding:"18px 20px",borderRadius:16,
+              border:`1px solid ${gold?GOLD+"88":"rgba(255,255,255,.1)"}`,
+              background:gold?GOLDBTN:"rgba(255,255,255,.07)",
+              cursor:"pointer",fontFamily:F,transition:"transform .12s",
+              boxShadow:gold?`0 6px 26px ${GOLD}55`:"none",
+            }}
+            onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
+            onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+            <span style={{fontSize:28}}>{icon}</span>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontWeight:800,fontSize:15,color:gold?"#3c2200":"rgba(255,255,255,.9)"}}>{label}</div>
+              <div style={{fontSize:11,color:gold?"rgba(60,34,0,.55)":"rgba(255,255,255,.4)",marginTop:2}}>{sub}</div>
+            </div>
+            <span style={{marginLeft:"auto",color:gold?"rgba(60,34,0,.4)":"rgba(255,255,255,.2)",fontSize:18}}>›</span>
+          </button>
+        ))}
+      </div>
+      <button onClick={onBack}
+        style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",border:"none",
+          cursor:"pointer",fontFamily:F,fontWeight:600,marginTop:8}}>
+        ‹ Back
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOURNAMENT DATA
+// ─────────────────────────────────────────────────────────────────────────────
+const TOURNAMENTS=[
+  {
+    id:"sydney",name:"SYDNEY",country:"Australia",flag:"🇦🇺",
+    difficulty:"easy",
+    entry:50,prize:300,
+    color:"#00B4D8",dark:"#005F73",
+    desc:"A relaxed introduction to tournament play. Easy AI, low stakes.",
+    games:3, // best of 3
+  },
+  {
+    id:"china",name:"CHINA",country:"China",flag:"🇨🇳",
+    difficulty:"medium",
+    entry:150,prize:800,
+    color:"#E63946",dark:"#9B1B26",
+    desc:"The Middle Kingdom challenge. Tactical AI, serious stakes.",
+    games:3,
+  },
+  {
+    id:"usa",name:"USA",country:"United States",flag:"🇺🇸",
+    difficulty:"hard",
+    entry:400,prize:2000,
+    color:"#3A86FF",dark:"#1B3A7A",
+    desc:"The ultimate test. Brutal AI, highest prize. Champions only.",
+    games:3,
+  },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOURNAMENT SELECT SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function TournamentScreen({coins,onSelect,onBack}){
+  const[vis,setVis]=useState(false);
+  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
+
+  return(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"column",alignItems:"center",
+      overflowY:"auto",padding:"28px 20px 40px"}}>
+
+      <div style={{textAlign:"center",marginBottom:24,
+        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(-12px)",transition:"all .45s"}}>
+        <div style={{fontSize:32,marginBottom:6}}>🏆</div>
+        <div style={{fontSize:24,fontWeight:900,color:GOLD,letterSpacing:"-.02em"}}>TOURNAMENT</div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,.35)",marginTop:4}}>Choose your championship</div>
+        <div style={{fontSize:11,color:GOLD+"88",marginTop:6}}>
+          💰 Your coins: {coins[0].toLocaleString()} 🪙
+        </div>
+      </div>
+
+      <div style={{
+        display:"flex",flexDirection:"column",gap:14,width:"100%",maxWidth:340,
+        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(14px)",
+        transition:"all .5s ease .1s",
+      }}>
+        {TOURNAMENTS.map((t,i)=>{
+          const canAfford=coins[0]>=t.entry;
+          return(
+            <div key={t.id} style={{
+              borderRadius:18,overflow:"hidden",
+              border:`2px solid ${t.color}55`,
+              opacity:canAfford?1:.55,
+              boxShadow:canAfford?`0 8px 32px ${t.color}25`:"none",
+              transition:"all .15s",
+            }}>
+              {/* Header banner */}
+              <div style={{
+                background:`linear-gradient(135deg,${t.dark},${t.color})`,
+                padding:"16px 18px",
+                display:"flex",alignItems:"center",gap:14,
+              }}>
+                <div style={{fontSize:36,lineHeight:1}}>{t.flag}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:18,fontWeight:900,color:"#fff",letterSpacing:".04em"}}>{t.name}</div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,.6)",marginTop:2}}>
+                    {t.difficulty.toUpperCase()} AI · BEST OF {t.games}
+                  </div>
+                </div>
+                <div style={{
+                  background:"rgba(0,0,0,.25)",borderRadius:8,
+                  padding:"6px 10px",textAlign:"center",
+                }}>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,.6)",fontWeight:700}}>PRIZE</div>
+                  <div style={{fontSize:15,fontWeight:900,color:"#FFD060"}}>
+                    {t.prize.toLocaleString()} 🪙
+                  </div>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{background:"rgba(255,255,255,.05)",padding:"14px 18px"}}>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.45)",marginBottom:12,lineHeight:1.6}}>
+                  {t.desc}
+                </div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>
+                    Entry: <span style={{color:canAfford?GOLD:"#ff6060",fontWeight:700}}>
+                      {t.entry.toLocaleString()} 🪙
+                    </span>
+                    {!canAfford&&<span style={{color:"#ff6060",fontSize:9,marginLeft:6}}>Not enough coins</span>}
+                  </div>
+                  <button onClick={()=>canAfford&&onSelect(t)} style={{
+                    padding:"9px 20px",borderRadius:10,border:"none",
+                    cursor:canAfford?"pointer":"not-allowed",fontFamily:F,
+                    background:canAfford?`linear-gradient(135deg,${t.dark},${t.color})`:"rgba(255,255,255,.08)",
+                    color:canAfford?"#fff":"rgba(255,255,255,.25)",
+                    fontWeight:800,fontSize:12,letterSpacing:".04em",
+                    boxShadow:canAfford?`0 4px 14px ${t.color}40`:"none",
+                    transition:"all .15s",
+                  }}>ENTER →</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={onBack} style={{marginTop:20,fontSize:12,color:"rgba(255,255,255,.25)",
+        background:"none",border:"none",cursor:"pointer",fontFamily:F,fontWeight:600}}>
+        ‹ Back
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOURNAMENT RESULT SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function TournamentResultScreen({tournament,playerName,wins,losses,onPlayAgain,onMenu}){
+  const[vis,setVis]=useState(false);
+  useEffect(()=>{setTimeout(()=>setVis(true),80);},[]);
+  const won=wins>=2;
+  const t=tournament;
+
+  return(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:20,padding:24}}>
+      <style>{`@keyframes trophySpin{0%{transform:scale(1) rotate(-5deg)}50%{transform:scale(1.15) rotate(5deg)}100%{transform:scale(1) rotate(-5deg)}}`}</style>
+
+      <div style={{
+        opacity:vis?1:0,transform:vis?"scale(1)":"scale(.85)",
+        transition:"all .5s cubic-bezier(.34,1.56,.64,1)",
+        textAlign:"center",
+      }}>
+        {/* Trophy / broken */}
+        <div style={{
+          fontSize:80,marginBottom:12,
+          animation:won?"trophySpin 2s ease-in-out infinite":"none",
+          display:"inline-block",
+        }}>
+          {won?"🏆":"💔"}
+        </div>
+
+        {/* Tournament flag */}
+        <div style={{fontSize:32,marginBottom:4}}>{t.flag}</div>
+        <div style={{
+          fontSize:11,fontWeight:700,letterSpacing:".14em",
+          color:t.color,marginBottom:8,
+        }}>{t.name} TOURNAMENT</div>
+
+        <div style={{
+          fontSize:won?34:26,fontWeight:900,
+          color:won?"#FFD060":"rgba(255,255,255,.6)",
+          marginBottom:6,lineHeight:1,
+        }}>
+          {won?"CHAMPION!":"ELIMINATED"}
+        </div>
+        <div style={{fontSize:14,color:"rgba(255,255,255,.45)",marginBottom:20}}>
+          {playerName} · {wins}W – {losses}L
+        </div>
+
+        {/* Prize box */}
+        {won&&(
+          <div style={{
+            background:`linear-gradient(135deg,rgba(255,208,96,.15),rgba(255,208,96,.05))`,
+            border:"1px solid rgba(255,208,96,.35)",
+            borderRadius:16,padding:"16px 28px",marginBottom:20,
+            display:"inline-block",
+          }}>
+            <div style={{fontSize:11,color:"rgba(255,208,96,.6)",fontWeight:700,marginBottom:4}}>PRIZE AWARDED</div>
+            <div style={{fontSize:28,fontWeight:900,color:GOLD}}>+{t.prize.toLocaleString()} 🪙</div>
+          </div>
+        )}
+        {!won&&(
+          <div style={{
+            background:"rgba(255,80,80,.08)",border:"1px solid rgba(255,80,80,.2)",
+            borderRadius:16,padding:"12px 24px",marginBottom:20,display:"inline-block",
+          }}>
+            <div style={{fontSize:12,color:"rgba(255,120,120,.7)"}}>Better luck next time!</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.3)",marginTop:3}}>
+              Entry fee of {t.entry.toLocaleString()} 🪙 was lost
+            </div>
+          </div>
+        )}
+
+        {/* Scoreboard */}
+        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:24}}>
+          {Array(3).fill(0).map((_,i)=>{
+            const isWin=i<wins;
+            const isLoss=i<losses&&!isWin;
+            return(
+              <div key={i} style={{
+                width:44,height:44,borderRadius:12,
+                background:i<wins?"rgba(80,220,120,.2)":i<wins+losses?"rgba(255,80,80,.2)":"rgba(255,255,255,.05)",
+                border:`2px solid ${i<wins?"#50DC78":i<wins+losses?"#ff5050":"rgba(255,255,255,.1)"}`,
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:20,
+              }}>
+                {i<wins?"✓":i<wins+losses?"✗":"·"}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+          <button onClick={onPlayAgain} style={{
+            padding:"14px 24px",borderRadius:12,border:"none",cursor:"pointer",fontFamily:F,
+            background:`linear-gradient(135deg,${t.dark},${t.color})`,
+            color:"#fff",fontWeight:800,fontSize:14,
+            boxShadow:`0 6px 20px ${t.color}40`,
+          }}>🔄 Try Again</button>
+          <button onClick={onMenu} style={{
+            padding:"14px 24px",borderRadius:12,border:"1px solid rgba(255,255,255,.1)",
+            cursor:"pointer",fontFamily:F,
+            background:"transparent",color:"rgba(255,255,255,.4)",fontWeight:700,fontSize:14,
+          }}>🏠 Menu</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PLAYER NAME SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 function PlayerNameScreen({vsAI, onStart, onBack}){
@@ -636,9 +933,117 @@ function PlayerNameScreen({vsAI, onStart, onBack}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// BETTING SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function BettingScreen({names,coins,vsAI,onStart,onBack}){
+  const[vis,setVis]=useState(false);
+  const[bet1,setBet1]=useState(100);
+  const[bet2,setBet2]=useState(100);
+  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
+
+  const c1=coins[0], c2=coins[1];
+  const canBet=bet1>0&&bet1<=c1&&(vsAI||(bet2>0&&bet2<=c2));
+
+  const BetInput=({pi,val,setVal,max,color})=>(
+    <div style={{
+      padding:"14px 16px",borderRadius:14,
+      background:"rgba(255,255,255,.06)",
+      border:`1px solid ${color}30`,
+    }}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div>
+          <div style={{fontSize:12,fontWeight:800,color,letterSpacing:".04em"}}>{names[pi]}</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>
+            💰 {max.toLocaleString()} coins available
+          </div>
+        </div>
+        <div style={{fontSize:18,fontWeight:900,color,minWidth:80,textAlign:"right"}}>
+          {val.toLocaleString()} 🪙
+        </div>
+      </div>
+      {/* Slider */}
+      <input type="range" min={10} max={max} step={10} value={val}
+        onChange={e=>setVal(Number(e.target.value))}
+        style={{width:"100%",accentColor:color,cursor:"pointer"}}/>
+      {/* Quick picks */}
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+        {[50,100,250,500].filter(v=>v<=max).map(v=>(
+          <button key={v} onClick={()=>setVal(v)} style={{
+            flex:1,padding:"5px 0",borderRadius:8,border:"none",cursor:"pointer",
+            background:val===v?color:"rgba(255,255,255,.08)",
+            color:val===v?"#fff":"rgba(255,255,255,.4)",
+            fontSize:10,fontWeight:700,fontFamily:F,
+          }}>{v}</button>
+        ))}
+        <button onClick={()=>setVal(max)} style={{
+          flex:1,padding:"5px 0",borderRadius:8,border:"none",cursor:"pointer",
+          background:val===max?color:"rgba(255,255,255,.08)",
+          color:val===max?"#fff":"rgba(255,255,255,.4)",
+          fontSize:10,fontWeight:700,fontFamily:F,
+        }}>ALL</button>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:20,padding:24}}>
+
+      <div style={{textAlign:"center",opacity:vis?1:0,transition:"opacity .4s"}}>
+        <div style={{fontSize:32,marginBottom:6}}>🪙</div>
+        <div style={{fontSize:24,fontWeight:900,color:GOLD,marginBottom:4}}>PLACE YOUR BETS</div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>Winner takes the pot</div>
+      </div>
+
+      <div style={{
+        width:"100%",maxWidth:320,display:"flex",flexDirection:"column",gap:12,
+        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(14px)",
+        transition:"all .45s ease .1s",
+      }}>
+        <BetInput pi={0} val={bet1} setVal={setBet1} max={c1} color={P1C}/>
+        {!vsAI&&<BetInput pi={1} val={bet2} setVal={setBet2} max={c2} color={P2C}/>}
+
+        {/* Pot preview */}
+        <div style={{
+          textAlign:"center",padding:"12px",borderRadius:12,
+          background:"rgba(255,208,96,.08)",border:"1px solid rgba(255,208,96,.2)",
+        }}>
+          <div style={{fontSize:11,color:"rgba(255,208,96,.5)",fontWeight:700,marginBottom:2}}>TOTAL POT</div>
+          <div style={{fontSize:24,fontWeight:900,color:GOLD}}>
+            {(vsAI?bet1*2:bet1+bet2).toLocaleString()} 🪙
+          </div>
+          {vsAI&&<div style={{fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>AI matches your bet</div>}
+        </div>
+
+        <button onClick={()=>canBet&&onStart(bet1,vsAI?bet1:bet2)} style={{
+          padding:"16px",borderRadius:14,border:"none",cursor:canBet?"pointer":"not-allowed",
+          background:canBet?GOLDBTN:"rgba(255,255,255,.08)",
+          color:canBet?"#3c2200":"rgba(255,255,255,.25)",
+          fontWeight:900,fontSize:15,fontFamily:F,
+          boxShadow:canBet?`0 6px 24px ${GOLD}45`:"none",
+          transition:"all .15s",
+        }}>🎲 START GAME</button>
+
+        <button onClick={()=>onStart(0,0)} style={{
+          padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
+          background:"transparent",color:"rgba(255,255,255,.2)",
+          fontSize:11,fontWeight:600,fontFamily:F,
+        }}>Skip betting — play for free</button>
+      </div>
+
+      <button onClick={onBack} style={{fontSize:12,color:"rgba(255,255,255,.2)",
+        background:"none",border:"none",cursor:"pointer",fontFamily:F,fontWeight:600}}>
+        ‹ Back
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GAME SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
+function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameEnd,aiDifficulty="medium",tournament,tournWins,tournLosses,onNextTournamentGame}){
   const[g,setG]=useState(()=>initialState||INIT());
   const[hov,setHov]=useState(null);
   const[camRx,setCamRx]=useState(0);
@@ -646,6 +1051,8 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
   const[activeCam,setActiveCam]=useState("top");
   const[smooth,setSmooth]=useState(true);
   const[aiThinking,setAiThinking]=useState(false);
+  const[timeLeft,setTimeLeft]=useState(30);
+  const timerRef=useRef(null);
   const drag=useRef(null);
   const wasDrag=useRef(false);
 
@@ -660,12 +1067,32 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
 
   useEffect(()=>{ if(!g.winner) onSave(g); },[g]);
 
+  // Timer — reset on turn change, counts down, forfeits turn at 0
+  useEffect(()=>{
+    if(g.winner) return;
+    if(vsAI&&g.turn===1) return; // AI handles its own turn
+    setTimeLeft(30);
+    clearInterval(timerRef.current);
+    timerRef.current=setInterval(()=>{
+      setTimeLeft(prev=>{
+        if(prev<=1){
+          clearInterval(timerRef.current);
+          // Forfeit turn — just switch to next player
+          setG(p=>({...p,turn:1-p.turn,mode:"move"}));
+          return 30;
+        }
+        return prev-1;
+      });
+    },1000);
+    return()=>clearInterval(timerRef.current);
+  },[g.turn,g.winner]);
+
   // AI move trigger
   useEffect(()=>{
     if(!vsAI||g.turn!==1||g.winner) return;
     setAiThinking(true);
     const t=setTimeout(()=>{
-      const move=aiPickMove(g);
+      const move=aiPickMove(g, aiDifficulty);
       if(move){
         if(move.type==="move"){
           setG(prev=>{
@@ -738,7 +1165,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
     const dx=p.clientX-drag.current.x, dy=p.clientY-drag.current.y;
     if(Math.hypot(dx,dy)>14){
       wasDrag.current=true; setSmooth(false); setActiveCam(null);
-      setCamRx(Math.max(0,Math.min(55,drag.current.rx+dy*.25)));
+      setCamRx(Math.max(0,Math.min(35,drag.current.rx+dy*.25)));
       setCamRz(drag.current.rz+dx*.25);
     }
   };
@@ -748,6 +1175,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
 
   const doMove=(r,c)=>{
     if(aiThinking||wasDrag.current||g.winner||g.mode!=="move"||!isVM(r,c))return;
+    clearInterval(timerRef.current);
     setG(prev=>{
       const np=prev.players.map((p,i)=>i===prev.turn?{...p,row:r,col:c}:p);
       const won=r===GOALS[prev.turn]?prev.turn:null;
@@ -757,6 +1185,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
   const doWall=(wr,wc,ori)=>{
     if(aiThinking||wasDrag.current||g.winner||g.mode!=="wall"||!g.players[g.turn].walls)return;
     if(!canPlace(wr,wc,ori,g.hW,g.vW,g.players))return;
+    clearInterval(timerRef.current);
     setG(prev=>{
       const nh=prev.hW.map(x=>[...x]),nv=prev.vW.map(x=>[...x]);
       ori==="h"?(nh[wr][wc]=prev.turn):(nv[wr][wc]=prev.turn);
@@ -777,6 +1206,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
     const player=g.players[pi];
     const isActive=g.turn===pi&&!g.winner;
     const base=PC[pi],light=PL[pi],dark=PD[pi];
+    const bet=bets?.[pi]||0;
     return(
       <div style={{
         width:PANEL_W, height:LH-8,
@@ -806,6 +1236,28 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
             padding:"3px 8px",borderRadius:99,letterSpacing:".04em",
             animation:"pulse 0.8s ease-in-out infinite"}}>THINKING…</div>}
         </div>
+
+        {/* Timer — only show for active human player */}
+        {isActive&&!(vsAI&&pi===1)&&!g.winner&&(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <div style={{
+              fontSize:20,fontWeight:900,
+              color:timeLeft<=10?"#FF4444":timeLeft<=20?"#FFD060":base,
+              transition:"color .3s",
+              animation:timeLeft<=5?"pulse .5s ease-in-out infinite":"none",
+            }}>{timeLeft}</div>
+            {/* Timer bar */}
+            <div style={{width:"100%",height:4,background:"rgba(255,255,255,.1)",borderRadius:99,overflow:"hidden"}}>
+              <div style={{
+                height:"100%",borderRadius:99,
+                width:`${(timeLeft/30)*100}%`,
+                background:timeLeft<=10?"#FF4444":timeLeft<=20?"#FFD060":base,
+                transition:"width 1s linear, background .3s",
+              }}/>
+            </div>
+          </div>
+        )}
+
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
           <div style={{fontSize:7,color:"rgba(255,255,255,.2)",fontWeight:700,letterSpacing:".05em"}}>WALLS</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:3}}>
@@ -817,6 +1269,15 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
           </div>
           <div style={{fontSize:10,fontWeight:700,color:isActive?base:"rgba(255,255,255,.2)"}}>{player.walls}</div>
         </div>
+
+        {/* Bet amount */}
+        {bet>0&&(
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:7,color:"rgba(255,255,255,.2)",fontWeight:700,letterSpacing:".05em",marginBottom:2}}>BET</div>
+            <div style={{fontSize:11,fontWeight:800,color:GOLD}}>🪙 {bet.toLocaleString()}</div>
+          </div>
+        )}
+
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,width:"100%"}}>
           {pi===0?(
             <>
@@ -922,7 +1383,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
           {/* Perspective wrapper */}
           <div style={{
             width:BP, height:BP,
-            perspective:"1200px",
+            perspective:"2400px",
             perspectiveOrigin:"50% 50%",
           }}>
             {/* 3D board — only rotations, NO scale */}
@@ -1060,15 +1521,76 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names}){
             <div style={{fontSize:28,fontWeight:900,color:"rgba(255,255,255,.95)",lineHeight:1,marginBottom:2}}>
               {names?.[g.winner]||`PLAYER ${g.winner+1}`}
             </div>
-            <div style={{fontSize:18,fontWeight:900,color:PC[g.winner],marginBottom:14}}>{PN[g.winner]}</div>
+            <div style={{fontSize:18,fontWeight:900,color:PC[g.winner],marginBottom:8}}>{PN[g.winner]}</div>
+            {bets&&(bets[0]>0||bets[1]>0)&&(
+              <div style={{
+                padding:"10px 16px",borderRadius:12,marginBottom:14,
+                background:"rgba(255,208,96,.12)",border:"1px solid rgba(255,208,96,.25)",
+              }}>
+                <div style={{fontSize:11,color:GOLD,fontWeight:900,marginBottom:2}}>
+                  🏆 +{(bets[0]+bets[1]).toLocaleString()} 🪙 coins won!
+                </div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,.35)"}}>
+                  Pot: {bets[0].toLocaleString()} + {bets[1].toLocaleString()}
+                </div>
+              </div>
+            )}
+
+            {/* Tournament scoreboard */}
+            {tournament&&(()=>{
+              const w=tournWins+(g.winner===0?1:0);
+              const l=tournLosses+(g.winner===1?1:0);
+              const done=w>=2||l>=2;
+              return(
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,.4)",fontWeight:700,letterSpacing:".1em",marginBottom:8}}>
+                    {tournament.flag} {tournament.name} — GAME {w+l} OF {tournament.games}
+                  </div>
+                  <div style={{display:"flex",gap:6,justifyContent:"center"}}>
+                    {Array(3).fill(0).map((_,i)=>(
+                      <div key={i} style={{
+                        width:36,height:36,borderRadius:10,fontSize:16,
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        background:i<w?"rgba(80,220,120,.2)":i<w+l?"rgba(255,80,80,.2)":"rgba(255,255,255,.05)",
+                        border:`2px solid ${i<w?"#50DC78":i<w+l?"#ff5050":"rgba(255,255,255,.1)"}`,
+                      }}>{i<w?"✓":i<w+l?"✗":"·"}</div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div style={{display:"flex",gap:8}}>
-              <button onClick={newGame} className="gb" style={{flex:1,padding:"12px",borderRadius:12,border:"none",
-                background:`linear-gradient(135deg,${PL[g.winner]},${PC[g.winner]})`,
-                color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:F,
-                boxShadow:`0 5px 18px ${PC[g.winner]}45`}}>↺ AGAIN</button>
-              <button onClick={onBack} className="gb" style={{flex:1,padding:"12px",borderRadius:12,
-                border:"1px solid rgba(255,255,255,.1)",background:"transparent",
-                color:"rgba(255,255,255,.4)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>🏠 MENU</button>
+              {tournament?(()=>{
+                const w=tournWins+(g.winner===0?1:0);
+                const l=tournLosses+(g.winner===1?1:0);
+                const done=w>=2||l>=2;
+                return done?(
+                  <button onClick={()=>{onGameEnd&&onGameEnd(g.winner);}} className="gb"
+                    style={{flex:1,padding:"12px",borderRadius:12,border:"none",
+                      background:GOLDBTN,color:"#3c2200",
+                      fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:F}}>
+                    🏆 See Result
+                  </button>
+                ):(
+                  <button onClick={()=>{onGameEnd&&onGameEnd(g.winner);onNextTournamentGame&&onNextTournamentGame();newGame();}} className="gb"
+                    style={{flex:1,padding:"12px",borderRadius:12,border:"none",
+                      background:`linear-gradient(135deg,${tournament.dark},${tournament.color})`,
+                      color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:F}}>
+                    ▶ Next Game
+                  </button>
+                );
+              })():(
+                <>
+                  <button onClick={()=>{onGameEnd&&onGameEnd(g.winner);newGame();}} className="gb" style={{flex:1,padding:"12px",borderRadius:12,border:"none",
+                    background:`linear-gradient(135deg,${PL[g.winner]},${PC[g.winner]})`,
+                    color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:F,
+                    boxShadow:`0 5px 18px ${PC[g.winner]}45`}}>↺ AGAIN</button>
+                  <button onClick={()=>{onGameEnd&&onGameEnd(g.winner);onBack();}} className="gb" style={{flex:1,padding:"12px",borderRadius:12,
+                    border:"1px solid rgba(255,255,255,.1)",background:"transparent",
+                    color:"rgba(255,255,255,.4)",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:F}}>🏠 MENU</button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1085,45 +1607,191 @@ export default function App(){
   const[savedGame,setSavedGame]=useState(null);
   const[vsAI,setVsAI]=useState(false);
   const[playerNames,setPlayerNames]=useState(["Player 1","Player 2"]);
+  const[bets,setBets]=useState([0,0]);
+  const[aiDifficulty,setAiDifficulty]=useState("medium");
+
+  // Tournament state
+  const[tournament,setTournament]=useState(null);   // selected tournament object
+  const[tournWins,setTournWins]=useState(0);
+  const[tournLosses,setTournLosses]=useState(0);
+  const isTournament=!!tournament;
+
+  // Coins
+  const initCoins=()=>{
+    try{const c=JSON.parse(localStorage.getItem("qCoins"));if(c&&Array.isArray(c)&&c.length===2)return c;}catch(e){}
+    return[1000,1000];
+  };
+  const[coins,setCoins]=useState(initCoins);
+  const saveCoins=c=>{setCoins(c);try{localStorage.setItem("qCoins",JSON.stringify(c));}catch(e){}};
+
+  const handleGameEnd=(winner)=>{
+    // Normal betting
+    if(!isTournament&&bets&&bets[0]+bets[1]>0){
+      const pot=bets[0]+bets[1];
+      const nc=[...coins];
+      nc[winner]+=pot;
+      saveCoins(nc);
+      return;
+    }
+    // Tournament
+    if(isTournament){
+      const isPlayerWin=winner===0;
+      const newWins=tournWins+(isPlayerWin?1:0);
+      const newLosses=tournLosses+(isPlayerWin?0:1);
+      setTournWins(newWins);
+      setTournLosses(newLosses);
+
+      if(newWins>=2||newLosses>=2){
+        // Tournament over
+        if(newWins>=2){
+          // Player wins — award prize
+          const nc=[coins[0]+tournament.prize, coins[1]];
+          saveCoins(nc);
+        }
+        setScreen("tournresult");
+      }
+      // else continue to next game automatically (handled in game screen via onBack returning to tournament flow)
+    }
+  };
+
   const[settings,setSettings]=useState({
     soundFx:true,music:false,haptics:true,
     showHints:true,animatePawns:true,highContrast:false,
   });
   const upd=(k,v)=>setSettings(p=>({...p,[k]:v}));
+
+  const startTournamentGame=()=>{
+    setSavedGame(null);
+    setScreen("game");
+  };
+
   return(
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap');
         *{box-sizing:border-box}body{margin:0;overflow:hidden}
       `}</style>
-      {screen==="splash"   &&<SplashScreen onDone={()=>setScreen("menu")}/>}
-      {screen==="menu"     &&<MenuScreen hasSave={!!savedGame}
+
+      {screen==="splash"      &&<SplashScreen onDone={()=>setScreen("menu")}/>}
+
+      {screen==="menu"        &&<MenuScreen hasSave={!!savedGame}
           onNew={()=>setScreen("modepick")}
           onContinue={()=>setScreen("game")}
           onHowTo={()=>setScreen("howto")}
           onSettings={()=>setScreen("settings")}/>}
-      {screen==="modepick" &&<ModePickerScreen
+
+      {screen==="modepick"    &&<ModePickerScreen
           onBack={()=>setScreen("menu")}
           onSelect={mode=>{
+            if(mode==="tournament"){setTournament(null);setScreen("tournselect");return;}
+            setTournament(null);
             setVsAI(mode==="ai");
+            setAiDifficulty("medium");
             setSavedGame(null);
             setScreen("namepick");
           }}/>}
-      {screen==="namepick" &&<PlayerNameScreen
+
+      {screen==="tournselect" &&<TournamentScreen
+          coins={coins}
+          onBack={()=>setScreen("modepick")}
+          onSelect={t=>{
+            setTournament(t);
+            setTournWins(0);
+            setTournLosses(0);
+            setVsAI(true);
+            setAiDifficulty(t.difficulty);
+            // Deduct entry fee
+            const nc=[coins[0]-t.entry, coins[1]];
+            saveCoins(nc);
+            setPlayerNames(["You","AI"]);
+            setBets([0,0]);
+            setScreen("tournname");
+          }}/>}
+
+      {screen==="tournname"   &&(
+        <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+          display:"flex",flexDirection:"column",alignItems:"center",
+          justifyContent:"center",gap:20,padding:24}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:32}}>{tournament?.flag}</div>
+            <div style={{fontSize:22,fontWeight:900,color:GOLD,marginBottom:4}}>
+              {tournament?.name} TOURNAMENT
+            </div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>Enter your name to begin</div>
+          </div>
+          {(()=>{
+            const[n,setN]=useState("");
+            return(<>
+              <input value={n} onChange={e=>setN(e.target.value)} maxLength={12}
+                placeholder="Your name…" autoFocus
+                style={{width:"100%",maxWidth:280,padding:"14px 16px",borderRadius:12,
+                  border:`2px solid ${n.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
+                  background:"rgba(255,255,255,.07)",color:"#fff",
+                  fontSize:15,fontWeight:700,fontFamily:F,outline:"none"}}/>
+              <button onClick={()=>{if(!n.trim())return;setPlayerNames([n.trim(),"AI"]);startTournamentGame();}}
+                style={{width:"100%",maxWidth:280,padding:"15px",borderRadius:12,border:"none",
+                  cursor:n.trim()?"pointer":"not-allowed",fontFamily:F,
+                  background:n.trim()?GOLDBTN:"rgba(255,255,255,.08)",
+                  color:n.trim()?"#3c2200":"rgba(255,255,255,.25)",
+                  fontWeight:900,fontSize:14}}>
+                ENTER TOURNAMENT →
+              </button>
+            </>);
+          })()}
+          <button onClick={()=>setScreen("tournselect")}
+            style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",
+              border:"none",cursor:"pointer",fontFamily:F}}>‹ Back</button>
+        </div>
+      )}
+
+      {screen==="namepick"    &&<PlayerNameScreen
           vsAI={vsAI}
           onBack={()=>setScreen("modepick")}
-          onStart={(n1,n2)=>{
-            setPlayerNames([n1,n2]);
+          onStart={(n1,n2)=>{setPlayerNames([n1,n2]);setScreen("bet");}}/>}
+
+      {screen==="bet"         &&<BettingScreen
+          names={playerNames}
+          coins={coins}
+          vsAI={vsAI}
+          onBack={()=>setScreen("namepick")}
+          onStart={(b1,b2)=>{
+            if(b1+b2>0){const nc=[coins[0]-b1,coins[1]-b2];saveCoins(nc);}
+            setBets([b1,b2]);
+            setSavedGame(null);
             setScreen("game");
           }}/>}
-      {screen==="game"     &&<GameScreen initialState={savedGame}
-          onBack={()=>setScreen("menu")}
+
+      {screen==="game"        &&<GameScreen initialState={savedGame}
+          onBack={()=>isTournament?setScreen("tournselect"):setScreen("menu")}
           onSave={s=>setSavedGame(s)}
           settings={settings}
           vsAI={vsAI}
-          names={playerNames}/>}
-      {screen==="howto"    &&<HowToPlayScreen onBack={()=>setScreen("menu")}/>}
-      {screen==="settings" &&<SettingsScreen onBack={()=>setScreen("menu")} settings={settings} onChange={upd}/>}
+          names={playerNames}
+          bets={bets}
+          onGameEnd={handleGameEnd}
+          aiDifficulty={aiDifficulty}
+          tournament={tournament}
+          tournWins={tournWins}
+          tournLosses={tournLosses}
+          onNextTournamentGame={startTournamentGame}/>}
+
+      {screen==="tournresult" &&<TournamentResultScreen
+          tournament={tournament}
+          playerName={playerNames[0]}
+          wins={tournWins}
+          losses={tournLosses}
+          onPlayAgain={()=>{
+            // Re-enter same tournament (pay entry again)
+            const nc=[coins[0]-tournament.entry, coins[1]];
+            saveCoins(nc);
+            setTournWins(0);
+            setTournLosses(0);
+            startTournamentGame();
+          }}
+          onMenu={()=>{setTournament(null);setScreen("menu");}}/>}
+
+      {screen==="howto"       &&<HowToPlayScreen onBack={()=>setScreen("menu")}/>}
+      {screen==="settings"    &&<SettingsScreen onBack={()=>setScreen("menu")} settings={settings} onChange={upd}/>}
     </>
   );
 }
