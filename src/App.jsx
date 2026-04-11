@@ -1550,6 +1550,46 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TOURNAMENT NAME SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function TournamentNameScreen({tournament, onStart, onBack}){
+  const[n,setN]=useState("");
+  const[vis,setVis]=useState(false);
+  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
+  return(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:20,padding:24,
+      opacity:vis?1:0,transition:"opacity .4s"}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:40}}>{tournament?.flag}</div>
+        <div style={{fontSize:22,fontWeight:900,color:GOLD,marginBottom:4}}>
+          {tournament?.name} TOURNAMENT
+        </div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>Enter your name to begin</div>
+      </div>
+      <input value={n} onChange={e=>setN(e.target.value)} maxLength={12}
+        placeholder="Your name…" autoFocus
+        style={{width:"100%",maxWidth:280,padding:"14px 16px",borderRadius:12,
+          border:`2px solid ${n.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
+          background:"rgba(255,255,255,.07)",color:"#fff",
+          fontSize:15,fontWeight:700,fontFamily:F,outline:"none"}}/>
+      <button onClick={()=>{if(!n.trim())return; onStart(n.trim());}}
+        style={{width:"100%",maxWidth:280,padding:"15px",borderRadius:12,border:"none",
+          cursor:n.trim()?"pointer":"not-allowed",fontFamily:F,
+          background:n.trim()?GOLDBTN:"rgba(255,255,255,.08)",
+          color:n.trim()?"#3c2200":"rgba(255,255,255,.25)",
+          fontWeight:900,fontSize:14}}>
+        ENTER TOURNAMENT →
+      </button>
+      <button onClick={onBack}
+        style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",
+          border:"none",cursor:"pointer",fontFamily:F}}>‹ Back</button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ROOT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App(){
@@ -1658,41 +1698,14 @@ export default function App(){
             setScreen("tournname");
           }}/>}
 
-      {screen==="tournname"   &&(
-        <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
-          display:"flex",flexDirection:"column",alignItems:"center",
-          justifyContent:"center",gap:20,padding:24}}>
-          <div style={{textAlign:"center"}}>
-            <div style={{fontSize:32}}>{tournament?.flag}</div>
-            <div style={{fontSize:22,fontWeight:900,color:GOLD,marginBottom:4}}>
-              {tournament?.name} TOURNAMENT
-            </div>
-            <div style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>Enter your name to begin</div>
-          </div>
-          {(()=>{
-            const[n,setN]=useState("");
-            return(<>
-              <input value={n} onChange={e=>setN(e.target.value)} maxLength={12}
-                placeholder="Your name…" autoFocus
-                style={{width:"100%",maxWidth:280,padding:"14px 16px",borderRadius:12,
-                  border:`2px solid ${n.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
-                  background:"rgba(255,255,255,.07)",color:"#fff",
-                  fontSize:15,fontWeight:700,fontFamily:F,outline:"none"}}/>
-              <button onClick={()=>{if(!n.trim())return;setPlayerNames([n.trim(),"AI"]);startTournamentGame();}}
-                style={{width:"100%",maxWidth:280,padding:"15px",borderRadius:12,border:"none",
-                  cursor:n.trim()?"pointer":"not-allowed",fontFamily:F,
-                  background:n.trim()?GOLDBTN:"rgba(255,255,255,.08)",
-                  color:n.trim()?"#3c2200":"rgba(255,255,255,.25)",
-                  fontWeight:900,fontSize:14}}>
-                ENTER TOURNAMENT →
-              </button>
-            </>);
-          })()}
-          <button onClick={()=>setScreen("tournselect")}
-            style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",
-              border:"none",cursor:"pointer",fontFamily:F}}>‹ Back</button>
-        </div>
-      )}
+      {screen==="tournname"   &&<TournamentNameScreen
+          tournament={tournament}
+          onBack={()=>setScreen("tournselect")}
+          onStart={name=>{
+            setPlayerNames([name,"AI"]);
+            setSavedGame(null);
+            setScreen("game");
+          }}/>}
 
       {screen==="namepick"    &&<PlayerNameScreen
           vsAI={vsAI}
