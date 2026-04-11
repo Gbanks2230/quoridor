@@ -491,56 +491,6 @@ function ModePickerScreen({onSelect,onBack}){
         {[
           {label:"2 Players",sub:"Pass & play with a friend",icon:"👥",mode:"2p"},
           {label:"vs AI",sub:"Play against the computer",icon:"🤖",mode:"ai"},
-        ].map(({label,sub,icon,mode})=>(
-          <button key={mode} onClick={()=>onSelect(mode)}
-            style={{
-              display:"flex",alignItems:"center",gap:16,
-              padding:"18px 20px",borderRadius:16,
-              border:`1px solid ${mode==="ai"?GOLD+"55":"rgba(255,255,255,.1)"}`,
-              background:mode==="ai"?GOLDBTN:"rgba(255,255,255,.07)",
-              cursor:"pointer",fontFamily:F,transition:"transform .12s",
-              boxShadow:mode==="ai"?`0 6px 26px ${GOLD}45`:"none",
-            }}
-            onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
-            onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-            <span style={{fontSize:28}}>{icon}</span>
-            <div style={{textAlign:"left"}}>
-              <div style={{fontWeight:800,fontSize:15,color:mode==="ai"?"#3c2200":"rgba(255,255,255,.9)"}}>{label}</div>
-              <div style={{fontSize:11,color:mode==="ai"?"rgba(60,34,0,.6)":"rgba(255,255,255,.4)",marginTop:2}}>{sub}</div>
-            </div>
-            <span style={{marginLeft:"auto",color:mode==="ai"?"rgba(60,34,0,.4)":"rgba(255,255,255,.2)",fontSize:18}}>›</span>
-          </button>
-        ))}
-      </div>
-      <button onClick={onBack}
-        style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",border:"none",
-          cursor:"pointer",fontFamily:F,fontWeight:600,marginTop:8}}>
-        ‹ Back
-      </button>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MODE PICKER SCREEN
-// ─────────────────────────────────────────────────────────────────────────────
-function ModePickerScreen({onSelect,onBack}){
-  const[vis,setVis]=useState(false);
-  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
-  return(
-    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
-      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,padding:24}}>
-      <div style={{textAlign:"center",opacity:vis?1:0,transition:"opacity .4s"}}>
-        <div style={{fontSize:26,fontWeight:900,color:GOLD,marginBottom:6}}>NEW GAME</div>
-        <div style={{fontSize:13,color:"rgba(255,255,255,.35)"}}>Choose your game mode</div>
-      </div>
-      <div style={{
-        display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:300,
-        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(16px)",transition:"all .45s ease .1s",
-      }}>
-        {[
-          {label:"2 Players",sub:"Pass & play with a friend",icon:"👥",mode:"2p"},
-          {label:"vs AI",sub:"Play against the computer",icon:"🤖",mode:"ai"},
           {label:"Tournament",sub:"Compete for glory & coins",icon:"🏆",mode:"tournament",gold:true},
         ].map(({label,sub,icon,mode,gold})=>(
           <button key={mode} onClick={()=>onSelect(mode)}
