@@ -9,7 +9,7 @@ const GOLDBTN = `linear-gradient(135deg,${GOLD},${GOLDD})`;
 const TABLE_BG = `repeating-linear-gradient(92deg,transparent,transparent 8px,rgba(0,0,0,.06) 8px,rgba(0,0,0,.06) 9px),linear-gradient(155deg,#3B1E0E 0%,#1E0A04 35%,#2E1408 60%,#180804 100%)`;
 
 const BS=9, WG=8, CS=44, GP=5, PAD=14, UN=CS+GP;
-const BP = BS*CS + (BS-1)*GP + PAD*2; // 464px
+const BP = BS*CS + (BS-1)*GP + PAD*2;
 
 const cx = c => PAD + c*UN;
 const cy = r => PAD + r*UN;
@@ -19,6 +19,96 @@ const P1C="#0097A7", P1L="#80DEEA", P1D="#005F6A";
 const P2C="#E91E63", P2L="#F48FB1", P2D="#880E4F";
 const PC=[P1C,P2C], PL=[P1L,P2L], PD=[P1D,P2D], PN=["TEAL","PINK"];
 const WALLT="#C8860A", WALLM="#A86808", WALLB="#7A4C08", WALLHI="#FFD060";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOUND ENGINE  (Web Audio API — no files, synthesized)
+// ─────────────────────────────────────────────────────────────────────────────
+let _ctx = null;
+const ctx = () => {
+  if(!_ctx) _ctx = new (window.AudioContext||window.webkitAudioContext)();
+  return _ctx;
+};
+
+const playTone = (freq, type, duration, vol=0.18, decay=true) => {
+  try {
+    const ac = ctx();
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ac.currentTime);
+    gain.gain.setValueAtTime(vol, ac.currentTime);
+    if(decay) gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+    osc.start(ac.currentTime);
+    osc.stop(ac.currentTime + duration);
+  } catch(e) {}
+};
+
+const SFX = {
+  move: ()=>{
+    playTone(520, "sine", 0.08, 0.15);
+    setTimeout(()=>playTone(680, "sine", 0.06, 0.1), 40);
+  },
+  wall: ()=>{
+    playTone(120, "sawtooth", 0.12, 0.22);
+    playTone(80,  "square",   0.14, 0.18);
+  },
+  invalid: ()=>{
+    playTone(180, "square", 0.08, 0.12);
+    setTimeout(()=>playTone(140, "square", 0.08, 0.1), 60);
+  },
+  tick: ()=>{ playTone(880, "sine", 0.05, 0.08); },
+  urgentTick: ()=>{ playTone(1100, "square", 0.06, 0.1); },
+  win: ()=>{
+    const notes=[523,659,784,1047];
+    notes.forEach((f,i)=>setTimeout(()=>playTone(f,"sine",0.3,0.2),i*120));
+  },
+  lose: ()=>{
+    [400,320,240].forEach((f,i)=>setTimeout(()=>playTone(f,"sawtooth",0.25,0.15),i*130));
+  },
+  turnStart: ()=>{ playTone(440,"sine",0.07,0.1); },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONFETTI
+// ─────────────────────────────────────────────────────────────────────────────
+function Confetti(){
+  const COLORS=["#FFD060","#0097A7","#E91E63","#80DEEA","#F48FB1","#fff","#FF6B35","#50DC78"];
+  const pieces = Array.from({length:60},(_,i)=>({
+    id:i,
+    x:Math.random()*100,
+    delay:Math.random()*0.8,
+    duration:1.8+Math.random()*1.4,
+    color:COLORS[i%COLORS.length],
+    size:6+Math.random()*8,
+    rotate:Math.random()*360,
+    shape:Math.random()>0.5?"circle":"rect",
+  }));
+  return(
+    <div style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"hidden",zIndex:10}}>
+      <style>{`
+        @keyframes fall{
+          0%{transform:translateY(-20px) rotate(0deg);opacity:1}
+          100%{transform:translateY(110vh) rotate(720deg);opacity:0}
+        }
+      `}</style>
+      {pieces.map(p=>(
+        <div key={p.id} style={{
+          position:"absolute",
+          left:`${p.x}%`,
+          top:0,
+          width:p.size,
+          height:p.shape==="circle"?p.size:p.size*0.4,
+          borderRadius:p.shape==="circle"?"50%":"2px",
+          background:p.color,
+          animation:`fall ${p.duration}s ease-in ${p.delay}s forwards`,
+          transform:`rotate(${p.rotate}deg)`,
+          boxShadow:`0 0 6px ${p.color}80`,
+        }}/>
+      ))}
+    </div>
+  );
+}
 
 const CAMS=[
   {id:"top",   label:"TOP",   rx:0,  rz:0},
@@ -186,6 +276,14 @@ function aiPickMove(g, difficulty="medium"){
     return null;
   }
 
+  return null;
+}
+
+function WinSound({winner}){
+  useEffect(()=>{
+    if(winner===0) SFX.win();
+    else SFX.lose();
+  },[]);
   return null;
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1017,17 +1115,19 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
 
   useEffect(()=>{ if(!g.winner) onSave(g); },[g]);
 
-  // Timer — reset on turn change, counts down, forfeits turn at 0
+  // Timer
   useEffect(()=>{
     if(g.winner) return;
-    if(vsAI&&g.turn===1) return; // AI handles its own turn
+    if(vsAI&&g.turn===1) return;
     setTimeLeft(30);
+    SFX.turnStart();
     clearInterval(timerRef.current);
     timerRef.current=setInterval(()=>{
       setTimeLeft(prev=>{
+        if(prev<=5) SFX.urgentTick();
+        else if(prev<=10) SFX.tick();
         if(prev<=1){
           clearInterval(timerRef.current);
-          // Forfeit turn — just switch to next player
           setG(p=>({...p,turn:1-p.turn,mode:"move"}));
           return 30;
         }
@@ -1045,12 +1145,14 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
       const move=aiPickMove(g, aiDifficulty);
       if(move){
         if(move.type==="move"){
+          SFX.move();
           setG(prev=>{
             const np=prev.players.map((p,i)=>i===1?{...p,row:move.row,col:move.col}:p);
             const won=move.row===GOALS[1]?1:null;
             return{...prev,players:np,turn:won!=null?1:0,winner:won};
           });
         } else {
+          SFX.wall();
           setG(prev=>{
             const nh=prev.hW.map(x=>[...x]),nv=prev.vW.map(x=>[...x]);
             move.ori==="h"?(nh[move.wr][move.wc]=1):(nv[move.wr][move.wc]=1);
@@ -1125,6 +1227,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
 
   const doMove=(r,c)=>{
     if(aiThinking||wasDrag.current||g.winner||g.mode!=="move"||!isVM(r,c))return;
+    SFX.move();
     clearInterval(timerRef.current);
     setG(prev=>{
       const np=prev.players.map((p,i)=>i===prev.turn?{...p,row:r,col:c}:p);
@@ -1134,7 +1237,8 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
   };
   const doWall=(wr,wc,ori)=>{
     if(aiThinking||wasDrag.current||g.winner||g.mode!=="wall"||!g.players[g.turn].walls)return;
-    if(!canPlace(wr,wc,ori,g.hW,g.vW,g.players))return;
+    if(!canPlace(wr,wc,ori,g.hW,g.vW,g.players)){SFX.invalid();return;}
+    SFX.wall();
     clearInterval(timerRef.current);
     setG(prev=>{
       const nh=prev.hW.map(x=>[...x]),nv=prev.vW.map(x=>[...x]);
@@ -1444,7 +1548,8 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
         <div style={{position:"absolute",inset:0,zIndex:200,
           display:"flex",alignItems:"center",justifyContent:"center",padding:20,
           background:"rgba(0,0,0,.88)",backdropFilter:"blur(22px)"}}>
-          <div style={{
+          {g.winner===0&&<Confetti/>}
+          <WinSound winner={g.winner}/>          <div style={{
             background:"linear-gradient(145deg,#2A1508,#1A0C04)",
             border:`2px solid ${PC[g.winner]}50`,borderRadius:22,
             padding:"26px 24px",textAlign:"center",maxWidth:280,width:"100%",
