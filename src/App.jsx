@@ -1,6 +1,51 @@
 import { useState, useRef, useEffect } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// SUPABASE CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+const SB_URL = "https://kiaccwwgmrveaqcmiatw.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpYWNjd3dnbXJ2ZWFxY21pYXR3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5NTUyMjYsImV4cCI6MjA5MTUzMTIyNn0.9SRA-xO1rkAve4rFKLqe2PI-jRhkoe8ZercBfmkVD_4";
+const SB_HEADERS = {"Content-Type":"application/json","apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`};
+
+const sb = {
+  async getRoom(id){
+    const r = await fetch(`${SB_URL}/rest/v1/game_rooms?id=eq.${id}&select=*`,{headers:SB_HEADERS});
+    const d = await r.json();
+    return d[0]||null;
+  },
+  async createRoom(id, state){
+    await fetch(`${SB_URL}/rest/v1/game_rooms`,{
+      method:"POST", headers:{...SB_HEADERS,"Prefer":"return=minimal"},
+      body:JSON.stringify({id, state}),
+    });
+  },
+  async updateRoom(id, state){
+    await fetch(`${SB_URL}/rest/v1/game_rooms?id=eq.${id}`,{
+      method:"PATCH", headers:{...SB_HEADERS,"Prefer":"return=minimal"},
+      body:JSON.stringify({state, updated_at: new Date().toISOString()}),
+    });
+  },
+  // Long-poll: check for changes every 1.2s
+  pollRoom(id, onUpdate, intervalMs=1200){
+    let lastUpdated = null;
+    const t = setInterval(async()=>{
+      try{
+        const room = await sb.getRoom(id);
+        if(!room) return;
+        if(room.updated_at !== lastUpdated){
+          lastUpdated = room.updated_at;
+          onUpdate(room.state);
+        }
+      }catch(e){}
+    }, intervalMs);
+    return ()=>clearInterval(t);
+  }
+};
+
+// Generate a random 6-char room code
+const genCode = ()=>Math.random().toString(36).slice(2,8).toUpperCase();
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 const F = "'Plus Jakarta Sans', sans-serif";
@@ -70,78 +115,106 @@ const SFX = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BACKGROUND MUSIC  (synthesized ambient loop, no files)
+// BACKGROUND MUSIC  — melodic looping BGM, synthesized
 // ─────────────────────────────────────────────────────────────────────────────
 let _music = null;
+let _musicTimer = null;
+
+// A cheerful pentatonic melody (D major penta: D E F# A B)
+const MELODY = [
+  // note freq, duration(s), gap after(s)
+  [293.7, 0.18, 0.06],  // D
+  [329.6, 0.18, 0.06],  // E
+  [369.9, 0.28, 0.06],  // F#
+  [440.0, 0.18, 0.06],  // A
+  [493.9, 0.36, 0.12],  // B  (held)
+  [440.0, 0.18, 0.06],  // A
+  [369.9, 0.18, 0.06],  // F#
+  [329.6, 0.28, 0.12],  // E  (held)
+  [293.7, 0.18, 0.06],  // D
+  [369.9, 0.18, 0.06],  // F#
+  [440.0, 0.18, 0.06],  // A
+  [587.3, 0.36, 0.12],  // D high (held)
+  [493.9, 0.18, 0.06],  // B
+  [440.0, 0.18, 0.06],  // A
+  [369.9, 0.28, 0.08],  // F#
+  [329.6, 0.18, 0.06],  // E
+  [293.7, 0.48, 0.30],  // D long (phrase end)
+];
+
+// Gentle chords played every ~2 bars under the melody
+const CHORDS = [
+  [293.7, 369.9, 440.0],  // D major
+  [329.6, 415.3, 493.9],  // E minor
+  [369.9, 440.0, 554.4],  // F# minor
+  [293.7, 369.9, 440.0],  // D major
+];
+
+function playNote(ac, master, freq, start, dur, vol=0.13){
+  try{
+    const osc = ac.createOscillator();
+    const env = ac.createGain();
+    osc.type = "triangle";  // warmer than sine, less harsh than sawtooth
+    osc.frequency.setValueAtTime(freq, start);
+    env.gain.setValueAtTime(0, start);
+    env.gain.linearRampToValueAtTime(vol, start + 0.02);
+    env.gain.setValueAtTime(vol, start + dur - 0.04);
+    env.gain.linearRampToValueAtTime(0, start + dur);
+    osc.connect(env); env.connect(master);
+    osc.start(start); osc.stop(start + dur + 0.05);
+  }catch(e){}
+}
+
+function scheduleLoop(ac, master){
+  if(!_music) return;
+  let t = ac.currentTime + 0.05;
+
+  // Schedule melody
+  MELODY.forEach(([freq, dur, gap])=>{
+    playNote(ac, master, freq, t, dur, 0.11);
+    t += dur + gap;
+  });
+
+  // Schedule background chords underneath (softer, longer)
+  let ct = ac.currentTime + 0.05;
+  CHORDS.forEach(notes=>{
+    notes.forEach(f=>playNote(ac, master, f, ct, 1.8, 0.028));
+    ct += 2.0;
+  });
+
+  // Total loop length — schedule next loop slightly before end
+  const loopLen = MELODY.reduce((s,[,d,g])=>s+d+g, 0);
+  _musicTimer = setTimeout(()=>scheduleLoop(ac, master), (loopLen - 0.3) * 1000);
+}
 
 function startMusic(){
   if(_music) return;
   try{
     const ac = ctx();
     const master = ac.createGain();
-    master.gain.setValueAtTime(0.045, ac.currentTime); // low so it doesn't fight SFX
+    // Slight reverb-like effect using a delay node
+    const delay = ac.createDelay(0.4);
+    const delayGain = ac.createGain();
+    delay.delayTime.setValueAtTime(0.25, ac.currentTime);
+    delayGain.gain.setValueAtTime(0.18, ac.currentTime);
+    master.connect(delay);
+    delay.connect(delayGain);
+    delayGain.connect(master);
     master.connect(ac.destination);
-
-    // Chord notes: calm pentatonic  D-F#-A-C#
-    const chordFreqs = [146.8, 185.0, 220.0, 277.2, 329.6, 369.9];
-    const nodes = [];
-
-    chordFreqs.forEach((freq, i)=>{
-      const osc = ac.createOscillator();
-      const gain = ac.createGain();
-      const lfo = ac.createOscillator(); // slow volume tremolo
-      const lfoGain = ac.createGain();
-
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, ac.currentTime);
-
-      lfo.type = "sine";
-      lfo.frequency.setValueAtTime(0.18 + i*0.04, ac.currentTime);
-      lfoGain.gain.setValueAtTime(0.012, ac.currentTime);
-
-      lfo.connect(lfoGain);
-      lfoGain.connect(gain.gain);
-      gain.gain.setValueAtTime(0.1 + (i%2===0?0.04:0), ac.currentTime);
-
-      osc.connect(gain);
-      gain.connect(master);
-
-      osc.start();
-      lfo.start();
-      nodes.push(osc, lfo);
-    });
-
-    // Slow rising bass note pulse every ~4s
-    const bassLoop = ()=>{
-      if(!_music) return;
-      try{
-        const b = ac.createOscillator();
-        const bg = ac.createGain();
-        b.type = "sine";
-        b.frequency.setValueAtTime(73.4, ac.currentTime); // low D
-        bg.gain.setValueAtTime(0.0, ac.currentTime);
-        bg.gain.linearRampToValueAtTime(0.055, ac.currentTime+1.5);
-        bg.gain.linearRampToValueAtTime(0.0, ac.currentTime+3.8);
-        b.connect(bg); bg.connect(master);
-        b.start(); b.stop(ac.currentTime+4);
-      }catch(e){}
-      setTimeout(bassLoop, 4200);
-    };
-    bassLoop();
-
-    _music = {nodes, master};
+    master.gain.setValueAtTime(0, ac.currentTime);
+    master.gain.linearRampToValueAtTime(0.7, ac.currentTime + 1.5);
+    _music = { ac, master };
+    scheduleLoop(ac, master);
   }catch(e){}
 }
 
 function stopMusic(){
+  if(!_musicTimer) clearTimeout(_musicTimer);
+  _musicTimer = null;
   if(!_music) return;
   try{
-    _music.master.gain.setValueAtTime(_music.master.gain.value, ctx().currentTime);
-    _music.master.gain.linearRampToValueAtTime(0, ctx().currentTime+1.5);
-    setTimeout(()=>{
-      try{ _music.nodes.forEach(n=>n.stop()); }catch(e){}
-      _music=null;
-    },1600);
+    _music.master.gain.linearRampToValueAtTime(0, _music.ac.currentTime + 1.2);
+    setTimeout(()=>{ _music=null; }, 1300);
   }catch(e){ _music=null; }
 }
 
@@ -672,27 +745,28 @@ function ModePickerScreen({onSelect,onBack}){
         opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(16px)",transition:"all .45s ease .1s",
       }}>
         {[
-          {label:"2 Players",sub:"Pass & play with a friend",icon:"👥",mode:"2p"},
-          {label:"vs AI",sub:"Play against the computer",icon:"🤖",mode:"ai"},
-          {label:"Tournament",sub:"Compete for glory & coins",icon:"🏆",mode:"tournament",gold:true},
-        ].map(({label,sub,icon,mode,gold})=>(
+          {label:"2 Players",    sub:"Pass & play with a friend",          icon:"👥",mode:"2p"},
+          {label:"vs AI",        sub:"Play against the computer",           icon:"🤖",mode:"ai"},
+          {label:"Online",       sub:"Challenge a friend remotely",         icon:"🌐",mode:"online",teal:true},
+          {label:"Tournament",   sub:"Compete for glory & coins",           icon:"🏆",mode:"tournament",gold:true},
+        ].map(({label,sub,icon,mode,gold,teal})=>(
           <button key={mode} onClick={()=>onSelect(mode)}
             style={{
               display:"flex",alignItems:"center",gap:16,
               padding:"18px 20px",borderRadius:16,
-              border:`1px solid ${gold?GOLD+"88":"rgba(255,255,255,.1)"}`,
-              background:gold?GOLDBTN:"rgba(255,255,255,.07)",
+              border:`1px solid ${gold?GOLD+"88":teal?P1C+"88":"rgba(255,255,255,.1)"}`,
+              background:gold?GOLDBTN:teal?`linear-gradient(135deg,${P1D},${P1C})`:"rgba(255,255,255,.07)",
               cursor:"pointer",fontFamily:F,transition:"transform .12s",
-              boxShadow:gold?`0 6px 26px ${GOLD}55`:"none",
+              boxShadow:gold?`0 6px 26px ${GOLD}55`:teal?`0 6px 26px ${P1C}40`:"none",
             }}
             onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
             onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
             <span style={{fontSize:28}}>{icon}</span>
             <div style={{textAlign:"left"}}>
-              <div style={{fontWeight:800,fontSize:15,color:gold?"#3c2200":"rgba(255,255,255,.9)"}}>{label}</div>
-              <div style={{fontSize:11,color:gold?"rgba(60,34,0,.55)":"rgba(255,255,255,.4)",marginTop:2}}>{sub}</div>
+              <div style={{fontWeight:800,fontSize:15,color:(gold||teal)?"#fff":"rgba(255,255,255,.9)"}}>{label}</div>
+              <div style={{fontSize:11,color:(gold||teal)?"rgba(255,255,255,.55)":"rgba(255,255,255,.4)",marginTop:2}}>{sub}</div>
             </div>
-            <span style={{marginLeft:"auto",color:gold?"rgba(60,34,0,.4)":"rgba(255,255,255,.2)",fontSize:18}}>›</span>
+            <span style={{marginLeft:"auto",color:(gold||teal)?"rgba(255,255,255,.35)":"rgba(255,255,255,.2)",fontSize:18}}>›</span>
           </button>
         ))}
       </div>
@@ -701,6 +775,484 @@ function ModePickerScreen({onSelect,onBack}){
           cursor:"pointer",fontFamily:F,fontWeight:600,marginTop:8}}>
         ‹ Back
       </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONLINE LOBBY SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+function OnlineLobbyScreen({onBack, onStartGame}){
+  const[tab,setTab]=useState("create"); // "create" | "join"
+  const[name,setName]=useState("");
+  const[code,setCode]=useState("");
+  const[status,setStatus]=useState("idle"); // idle|creating|waiting|joining|error
+  const[roomCode,setRoomCode]=useState("");
+  const[errorMsg,setErrorMsg]=useState("");
+  const[vis,setVis]=useState(false);
+  const pollStop=useRef(null);
+  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
+  useEffect(()=>()=>{ if(pollStop.current) pollStop.current(); },[]);
+
+  const createRoom=async()=>{
+    if(!name.trim()) return;
+    setStatus("creating");
+    const id=genCode();
+    setRoomCode(id);
+    const initState={
+      players:[{row:8,col:4,walls:10,name:name.trim()},{row:0,col:4,walls:10,name:""}],
+      hW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
+      vW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
+      turn:Math.random()<0.5?0:1, mode:"move", ori:"h", winner:null,
+      phase:"waiting", // waiting | playing
+      host:name.trim(),
+    };
+    try{
+      await sb.createRoom(id, initState);
+      setStatus("waiting");
+      // Poll until guest joins
+      pollStop.current = sb.pollRoom(id, state=>{
+        if(state.phase==="playing"){
+          if(pollStop.current) pollStop.current();
+          onStartGame({roomId:id, playerIndex:0, playerName:name.trim(), initialState:state});
+        }
+      });
+    }catch(e){
+      setStatus("error");
+      setErrorMsg("Failed to create room. Check connection.");
+    }
+  };
+
+  const joinRoom=async()=>{
+    if(!name.trim()||!code.trim()) return;
+    setStatus("joining");
+    try{
+      const room=await sb.getRoom(code.trim().toUpperCase());
+      if(!room){ setStatus("error"); setErrorMsg("Room not found. Check the code."); return; }
+      if(room.state.phase!=="waiting"){ setStatus("error"); setErrorMsg("Game already started."); return; }
+      // Update room with guest name and set phase to playing
+      const newState={
+        ...room.state,
+        players:[
+          room.state.players[0],
+          {...room.state.players[1], name:name.trim(), row:0, col:4}
+        ],
+        phase:"playing",
+      };
+      await sb.updateRoom(code.trim().toUpperCase(), newState);
+      onStartGame({roomId:code.trim().toUpperCase(), playerIndex:1, playerName:name.trim(), initialState:newState});
+    }catch(e){
+      setStatus("error");
+      setErrorMsg("Connection error. Try again.");
+    }
+  };
+
+  return(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:20,padding:24,
+      opacity:vis?1:0,transition:"opacity .4s"}}>
+
+      <div style={{textAlign:"center"}}>
+        <div style={{fontSize:32,marginBottom:6}}>🌐</div>
+        <div style={{fontSize:24,fontWeight:900,color:GOLD}}>ONLINE MULTIPLAYER</div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,.35)",marginTop:4}}>Play with a friend remotely</div>
+      </div>
+
+      {/* Name input — always shown */}
+      {(status==="idle"||status==="error")&&(
+        <div style={{width:"100%",maxWidth:300,display:"flex",flexDirection:"column",gap:12}}>
+          <input value={name} onChange={e=>setName(e.target.value)} maxLength={12}
+            placeholder="Your name…" autoFocus
+            style={{width:"100%",padding:"13px 16px",borderRadius:12,
+              border:`2px solid ${name.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
+              background:"rgba(255,255,255,.07)",color:"#fff",
+              fontSize:15,fontWeight:700,fontFamily:F,outline:"none"}}/>
+
+          {/* Tab toggle */}
+          <div style={{display:"flex",background:"rgba(0,0,0,.4)",borderRadius:12,padding:4,gap:3}}>
+            {["create","join"].map(t=>(
+              <button key={t} onClick={()=>{setTab(t);setErrorMsg("");}} style={{
+                flex:1,padding:"10px",borderRadius:9,border:"none",cursor:"pointer",
+                background:tab===t?GOLDBTN:"transparent",
+                color:tab===t?"#3c2200":"rgba(255,255,255,.4)",
+                fontWeight:800,fontSize:12,fontFamily:F,transition:"all .15s",
+              }}>{t==="create"?"🏠 CREATE ROOM":"🔑 JOIN ROOM"}</button>
+            ))}
+          </div>
+
+          {tab==="join"&&(
+            <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} maxLength={6}
+              placeholder="Enter 6-digit room code"
+              style={{width:"100%",padding:"13px 16px",borderRadius:12,
+                border:`2px solid ${code.trim()?GOLD+"80":"rgba(255,255,255,.1)"}`,
+                background:"rgba(255,255,255,.07)",color:GOLD,
+                fontSize:18,fontWeight:900,fontFamily:F,outline:"none",
+                textAlign:"center",letterSpacing:".2em"}}/>
+          )}
+
+          {errorMsg&&(
+            <div style={{fontSize:12,color:"#ff6060",textAlign:"center",padding:"8px",
+              background:"rgba(255,80,80,.1)",borderRadius:8}}>{errorMsg}</div>
+          )}
+
+          <button
+            onClick={tab==="create"?createRoom:joinRoom}
+            disabled={!name.trim()||(tab==="join"&&code.trim().length!==6)}
+            style={{
+              padding:"15px",borderRadius:12,border:"none",fontFamily:F,
+              cursor:name.trim()?"pointer":"not-allowed",
+              background:name.trim()?GOLDBTN:"rgba(255,255,255,.08)",
+              color:name.trim()?"#3c2200":"rgba(255,255,255,.25)",
+              fontWeight:900,fontSize:14,
+              boxShadow:name.trim()?`0 6px 24px ${GOLD}45`:"none",
+            }}>
+            {tab==="create"?"CREATE ROOM →":"JOIN GAME →"}
+          </button>
+        </div>
+      )}
+
+      {/* Waiting state */}
+      {status==="waiting"&&(
+        <div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+          <div style={{fontSize:13,color:"rgba(255,255,255,.5)"}}>Share this code with your friend:</div>
+          <div style={{
+            fontSize:42,fontWeight:900,color:GOLD,letterSpacing:".22em",
+            padding:"16px 28px",borderRadius:16,
+            background:"rgba(255,208,96,.1)",border:"2px solid rgba(255,208,96,.3)",
+          }}>{roomCode}</div>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:10,height:10,borderRadius:"50%",background:P1C,
+              animation:"pulse .8s ease-in-out infinite"}}/>
+            <div style={{fontSize:13,color:"rgba(255,255,255,.4)"}}>Waiting for opponent to join…</div>
+          </div>
+          <button onClick={()=>{
+            if(pollStop.current) pollStop.current();
+            setStatus("idle");setRoomCode("");
+          }} style={{fontSize:11,color:"rgba(255,255,255,.25)",background:"none",
+            border:"none",cursor:"pointer",fontFamily:F,marginTop:8}}>Cancel</button>
+        </div>
+      )}
+
+      {status==="creating"&&(
+        <div style={{fontSize:13,color:"rgba(255,255,255,.4)"}}>Creating room…</div>
+      )}
+      {status==="joining"&&(
+        <div style={{fontSize:13,color:"rgba(255,255,255,.4)"}}>Joining game…</div>
+      )}
+
+      <button onClick={onBack}
+        style={{fontSize:12,color:"rgba(255,255,255,.2)",background:"none",
+          border:"none",cursor:"pointer",fontFamily:F,fontWeight:600}}>
+        ‹ Back
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ONLINE GAME SCREEN  (wraps GameScreen with real-time sync)
+// ─────────────────────────────────────────────────────────────────────────────
+function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack}){
+  const[g,setG]=useState(initialState);
+  const[connected,setConnected]=useState(true);
+  const isMyTurn = g.turn===playerIndex && !g.winner;
+  const pollStop=useRef(null);
+  const lastUpdated=useRef(null);
+  const names=[
+    g.players[0].name||"Player 1",
+    g.players[1].name||"Player 2",
+  ];
+
+  // Poll for remote updates
+  useEffect(()=>{
+    pollStop.current = sb.pollRoom(roomId, state=>{
+      setG(state);
+      setConnected(true);
+    });
+    return()=>{ if(pollStop.current) pollStop.current(); };
+  },[roomId]);
+
+  const pushState=async(newState)=>{
+    try{ await sb.updateRoom(roomId, newState); setConnected(true); }
+    catch(e){ setConnected(false); }
+  };
+
+  const vm = g.winner?[]:getVM(g.turn,g.players,g.hW,g.vW);
+  const isVM=(r,c)=>vm.some(([vr,vc])=>vr===r&&vc===c);
+  const tc=PC[g.turn];
+
+  const doMove=(r,c)=>{
+    if(!isMyTurn||!isVM(r,c)) return;
+    SFX.move();
+    const np=g.players.map((p,i)=>i===g.turn?{...p,row:r,col:c}:p);
+    const won=r===GOALS[g.turn]?g.turn:null;
+    const newState={...g,players:np,turn:won!=null?g.turn:1-g.turn,winner:won};
+    setG(newState);
+    pushState(newState);
+  };
+  const doWall=(wr,wc,ori)=>{
+    if(!isMyTurn||g.mode!=="wall"||!g.players[g.turn].walls) return;
+    if(!canPlace(wr,wc,ori,g.hW,g.vW,g.players)){SFX.invalid();return;}
+    SFX.wall();
+    const nh=g.hW.map(x=>[...x]),nv=g.vW.map(x=>[...x]);
+    ori==="h"?(nh[wr][wc]=g.turn):(nv[wr][wc]=g.turn);
+    const np=g.players.map((p,i)=>i===g.turn?{...p,walls:p.walls-1}:p);
+    const newState={...g,hW:nh,vW:nv,players:np,turn:1-g.turn,mode:"move"};
+    setG(newState);
+    pushState(newState);
+  };
+
+  const[hov,setHov]=useState(null);
+  const showHov=hov&&g.mode==="wall"&&isMyTurn;
+  const hvValid=showHov&&g.players[g.turn].walls>0&&canPlace(hov.wr,hov.wc,hov.ori,g.hW,g.vW,g.players);
+  const frameW=12;
+
+  // Layout
+  const[vw,setVw]=useState(window.innerWidth);
+  const[vh,setVh]=useState(window.innerHeight);
+  useEffect(()=>{
+    const upd=()=>{setVw(window.innerWidth);setVh(window.innerHeight);};
+    window.addEventListener("resize",upd);
+    return()=>window.removeEventListener("resize",upd);
+  },[]);
+
+  const isPortrait=vw<=vh;
+  const LW=isPortrait?vh:vw, LH=isPortrait?vw:vh;
+  const PANEL_W=Math.round(Math.max(78,Math.min(96,LW*0.105)));
+  const BTN_W=66, GAP=5;
+  const centerW=LW-PANEL_W*2-BTN_W-GAP*4;
+  const boardScale=Math.min((LH-8)/BP,centerW/BP);
+  const boardPx=Math.round(BP*boardScale);
+
+  const outerStyle=isPortrait?{
+    position:"fixed",zIndex:10,
+    width:vh,height:vw,
+    top:(vh-vw)/2,left:(vw-vh)/2,
+    transform:"rotate(90deg)",
+    transformOrigin:"center center",
+    overflow:"hidden",
+  }:{width:"100vw",height:"100vh",overflow:"hidden"};
+
+  return(
+    <div style={{...outerStyle,background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"row",alignItems:"center",
+      padding:4,gap:GAP}}>
+      <style>{`
+        .gb:active{opacity:.75;transform:scale(.92)!important}
+        @keyframes vp{0%,100%{opacity:.28;transform:scale(.58)}50%{opacity:.88;transform:scale(1.1)}}
+        @keyframes wf{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+        @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+      `}</style>
+
+      {/* Connection badge */}
+      {!connected&&(
+        <div style={{position:"absolute",top:8,left:"50%",transform:"translateX(-50%)",zIndex:99,
+          background:"rgba(255,80,80,.9)",color:"#fff",fontSize:10,fontWeight:700,
+          padding:"4px 12px",borderRadius:99}}>⚠ Reconnecting…</div>
+      )}
+
+      {/* LEFT PANEL */}
+      <div style={{width:PANEL_W,flexShrink:0,height:LH-8,
+        display:"flex",flexDirection:"column",alignItems:"center",
+        justifyContent:"space-between",padding:"10px 6px",
+        background:g.turn===0&&!g.winner?"rgba(0,151,167,.13)":"rgba(0,0,0,.3)",
+        border:`2px solid ${g.turn===0&&!g.winner?P1C+"70":"rgba(255,255,255,.06)"}`,
+        borderRadius:14,transition:"all .25s"}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+          <div style={{fontSize:30,filter:g.turn===0?`drop-shadow(0 0 8px ${P1C})`:"grayscale(.5) opacity(.6)"}}>
+            {playerIndex===0?"👤":"👥"}
+          </div>
+          <div style={{fontSize:11,fontWeight:900,color:g.turn===0?P1C:"rgba(255,255,255,.3)",textAlign:"center"}}>
+            {names[0]}{playerIndex===0?" (you)":""}
+          </div>
+          {g.turn===0&&!g.winner&&<div style={{background:P1C,color:"#fff",fontSize:8,fontWeight:900,padding:"3px 8px",borderRadius:99}}>TURN</div>}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+          <div style={{fontSize:7,color:"rgba(255,255,255,.2)",fontWeight:700}}>WALLS</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:3}}>
+            {Array(10).fill(0).map((_,j)=>(
+              <div key={j} style={{width:10,height:10,borderRadius:3,
+                background:j<g.players[0].walls?`linear-gradient(135deg,${P1L},${P1C})`:"rgba(255,255,255,.09)"}}/>
+            ))}
+          </div>
+          <div style={{fontSize:10,fontWeight:700,color:g.turn===0?P1C:"rgba(255,255,255,.2)"}}>{g.players[0].walls}</div>
+        </div>
+        {/* Camera / back buttons */}
+        <div style={{display:"flex",flexDirection:"column",gap:5,width:"100%"}}>
+          <button onClick={onBack} style={{width:"100%",padding:"7px 0",borderRadius:8,
+            border:"1px solid rgba(255,208,96,.2)",background:"rgba(255,208,96,.08)",
+            fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>🏠</button>
+        </div>
+      </div>
+
+      {/* CENTER */}
+      <div style={{flex:1,height:LH-8,position:"relative",display:"flex",flexDirection:"row",
+        alignItems:"center",gap:5}}>
+
+        {/* Mode buttons — only interactive on your turn */}
+        {!g.winner&&(
+          <div style={{width:BTN_W,flexShrink:0,height:boardPx,display:"flex",flexDirection:"column",gap:5}}>
+            {[
+              {m:"move",ori:null,icon:"🏃",label:"MOVE"},
+              {m:"wall",ori:"h", icon:"━━", label:"H WALL"},
+              {m:"wall",ori:"v", icon:"┃",  label:"V WALL"},
+            ].map(({m,ori,icon,label})=>{
+              const active=g.mode===m&&(ori===null||g.ori===ori);
+              return(
+                <button key={label}
+                  onClick={()=>isMyTurn&&setG(p=>({...p,mode:m,ori:ori??p.ori}))}
+                  className="gb"
+                  style={{flex:1,width:"100%",borderRadius:12,border:"none",cursor:isMyTurn?"pointer":"not-allowed",
+                    background:active?GOLDBTN:"rgba(0,0,0,.55)",
+                    border:`1px solid ${active?GOLD+"55":"rgba(255,255,255,.07)"}`,
+                    color:active?"#3c2200":isMyTurn?"rgba(255,255,255,.35)":"rgba(255,255,255,.15)",
+                    fontWeight:900,fontFamily:F,transition:"all .15s",
+                    boxShadow:active?`0 3px 16px ${GOLD}55`:"none",
+                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,
+                    opacity:isMyTurn?1:0.5,
+                  }}>
+                  <span style={{fontSize:16,lineHeight:1}}>{icon}</span>
+                  <span style={{fontSize:9,letterSpacing:".04em",fontWeight:800}}>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Board */}
+        <div style={{flex:1,height:"100%",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+          <div style={{transform:`scale(${boardScale})`,transformOrigin:"center center",flexShrink:0}}>
+            <div style={{position:"relative",width:BP,height:BP,
+              transformStyle:"preserve-3d",
+              transform:`rotateX(0deg) rotateZ(0deg)`,
+            }}>
+              {/* Frame */}
+              <div style={{position:"absolute",top:-frameW,left:-frameW,width:BP+frameW*2,height:BP+frameW*2,
+                backgroundImage:`repeating-linear-gradient(92deg,transparent,transparent 7px,rgba(0,0,0,.05) 7px,rgba(0,0,0,.05) 8px),linear-gradient(145deg,#7A4010 0%,#4A2008 45%,#3A1808 55%,#6A3818 100%)`,
+                borderRadius:16,zIndex:0,
+                boxShadow:"0 40px 100px rgba(0,0,0,.95),0 15px 40px rgba(0,0,0,.7)"}}>
+                {[[8,8],[8,BP+frameW*2-15],[BP+frameW*2-15,8],[BP+frameW*2-15,BP+frameW*2-15]].map(([t,l],i)=>(
+                  <div key={i} style={{position:"absolute",top:t,left:l,width:7,height:7,borderRadius:"50%",
+                    background:"radial-gradient(circle at 35% 28%,#FFE880,#B07018)",zIndex:5}}/>
+                ))}
+              </div>
+              {/* Surface */}
+              <div style={{position:"absolute",inset:0,zIndex:1,background:"#3A1808",borderRadius:5}}/>
+              {/* Goal labels */}
+              <div style={{position:"absolute",top:2,left:"50%",transform:"translateX(-50%)",zIndex:3,
+                fontSize:7,fontWeight:800,color:P1C,background:"rgba(0,0,0,.3)",padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>
+                {names[0]} GOAL ▲
+              </div>
+              <div style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",zIndex:3,
+                fontSize:7,fontWeight:800,color:P2C,background:"rgba(0,0,0,.3)",padding:"2px 7px",borderRadius:99,whiteSpace:"nowrap"}}>
+                ▼ {names[1]} GOAL
+              </div>
+              {/* Cells */}
+              {Array.from({length:9},(_,r)=>Array.from({length:9},(_,c)=>{
+                const valid=isMyTurn&&isVM(r,c);
+                const isP0=g.players[0].row===r&&g.players[0].col===c;
+                const isP1=g.players[1].row===r&&g.players[1].col===c;
+                return(
+                  <div key={`${r}-${c}`} onClick={()=>doMove(r,c)} style={{
+                    position:"absolute",zIndex:3,top:cy(r),left:cx(c),width:CS,height:CS,borderRadius:3,
+                    background:valid?`${tc}40`:(r+c)%2===0?"#F0DFA8":"#E8D496",
+                    border:`1px solid ${valid?tc+"70":"rgba(130,90,20,.22)"}`,
+                    cursor:valid?"pointer":"default",
+                    display:"flex",alignItems:"flex-end",justifyContent:"center",
+                    boxShadow:valid?`inset 0 0 12px ${tc}28`:"inset 0 1px 0 rgba(255,255,255,.35)",
+                  }}>
+                    {valid&&!isP0&&!isP1&&<div style={{position:"absolute",top:"50%",left:"50%",
+                      transform:"translate(-50%,-50%)",width:12,height:12,borderRadius:"50%",
+                      background:tc,animation:"vp 1.5s ease-in-out infinite"}}/>}
+                    {(isP0||isP1)&&<div style={{position:"absolute",bottom:2,left:"50%",transform:"translateX(-50%)",
+                      width:22,height:7,background:"radial-gradient(ellipse,rgba(0,0,0,.45),transparent 70%)",
+                      borderRadius:"50%",zIndex:2,pointerEvents:"none"}}/>}
+                    {isP0&&<Pawn pi={0}/>}
+                    {isP1&&<Pawn pi={1}/>}
+                  </div>
+                );
+              }))}
+              {/* Walls */}
+              {g.hW.map((row,wr)=>row.map((pi,wc)=>pi!==-1&&<HWall key={`hw${wr}-${wc}`} wr={wr} wc={wc} pi={pi}/>))}
+              {g.vW.map((row,wr)=>row.map((pi,wc)=>pi!==-1&&<VWall key={`vw${wr}-${wc}`} wr={wr} wc={wc} pi={pi}/>))}
+              {showHov&&(hov.ori==="h"
+                ?<HWall wr={hov.wr} wc={hov.wc} ghost valid={hvValid}/>
+                :<VWall wr={hov.wr} wc={hov.wc} ghost valid={hvValid}/>)}
+              {g.mode==="wall"&&isMyTurn&&!g.winner&&Array.from({length:WG},(_,wr)=>
+                Array.from({length:WG},(_,wc)=>
+                  g.ori==="h"
+                    ?<div key={`wth${wr}-${wc}`} style={{position:"absolute",zIndex:20,cursor:"crosshair",
+                        top:cy(wr+1)-GP-8,left:cx(wc),width:2*CS+GP,height:GP+16}}
+                        onMouseEnter={()=>setHov({wr,wc,ori:"h"})} onMouseLeave={()=>setHov(null)}
+                        onClick={()=>doWall(wr,wc,"h")}/>
+                    :<div key={`wtv${wr}-${wc}`} style={{position:"absolute",zIndex:20,cursor:"crosshair",
+                        top:cy(wr),left:cx(wc+1)-GP-8,width:GP+16,height:2*CS+GP}}
+                        onMouseEnter={()=>setHov({wr,wc,ori:"v"})} onMouseLeave={()=>setHov(null)}
+                        onClick={()=>doWall(wr,wc,"v")}/>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL */}
+      <div style={{width:PANEL_W,flexShrink:0,height:LH-8,
+        display:"flex",flexDirection:"column",alignItems:"center",
+        justifyContent:"space-between",padding:"10px 6px",
+        background:g.turn===1&&!g.winner?"rgba(233,30,99,.13)":"rgba(0,0,0,.3)",
+        border:`2px solid ${g.turn===1&&!g.winner?P2C+"70":"rgba(255,255,255,.06)"}`,
+        borderRadius:14,transition:"all .25s"}}>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+          <div style={{fontSize:30,filter:g.turn===1?`drop-shadow(0 0 8px ${P2C})`:"grayscale(.5) opacity(.6)"}}>
+            {playerIndex===1?"👤":"👥"}
+          </div>
+          <div style={{fontSize:11,fontWeight:900,color:g.turn===1?P2C:"rgba(255,255,255,.3)",textAlign:"center"}}>
+            {names[1]||"Waiting…"}{playerIndex===1?" (you)":""}
+          </div>
+          {g.turn===1&&!g.winner&&<div style={{background:P2C,color:"#fff",fontSize:8,fontWeight:900,padding:"3px 8px",borderRadius:99}}>TURN</div>}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+          <div style={{fontSize:7,color:"rgba(255,255,255,.2)",fontWeight:700}}>WALLS</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:3}}>
+            {Array(10).fill(0).map((_,j)=>(
+              <div key={j} style={{width:10,height:10,borderRadius:3,
+                background:j<g.players[1].walls?`linear-gradient(135deg,${P2L},${P2C})`:"rgba(255,255,255,.09)"}}/>
+            ))}
+          </div>
+          <div style={{fontSize:10,fontWeight:700,color:g.turn===1?P2C:"rgba(255,255,255,.2)"}}>{g.players[1].walls}</div>
+        </div>
+        <div style={{fontSize:8,color:"rgba(255,255,255,.18)",textAlign:"center",lineHeight:1.6}}>
+          Room{"\n"}<span style={{color:GOLD,fontWeight:800,fontSize:10}}>{roomId}</span>
+        </div>
+      </div>
+
+      {/* WIN OVERLAY */}
+      {g.winner!=null&&(
+        <div style={{position:"absolute",inset:0,zIndex:200,display:"flex",alignItems:"center",
+          justifyContent:"center",padding:20,background:"rgba(0,0,0,.88)",backdropFilter:"blur(22px)"}}>
+          {g.winner===playerIndex&&<Confetti/>}
+          <WinSound winner={g.winner===playerIndex?0:1}/>
+          <div style={{background:"linear-gradient(145deg,#2A1508,#1A0C04)",
+            border:`2px solid ${PC[g.winner]}50`,borderRadius:22,padding:"26px 24px",
+            textAlign:"center",maxWidth:280,width:"100%",position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",inset:0,pointerEvents:"none",borderRadius:22,
+              background:`radial-gradient(ellipse at 50% 0%,${PC[g.winner]}16,transparent 65%)`}}/>
+            <div style={{fontSize:8,fontWeight:900,letterSpacing:".2em",color:PC[g.winner],marginBottom:4}}>
+              {g.winner===playerIndex?"🏆 YOU WIN!":"YOU LOSE"}
+            </div>
+            <div style={{fontSize:28,fontWeight:900,color:"rgba(255,255,255,.95)",lineHeight:1,marginBottom:4}}>
+              {names[g.winner]}
+            </div>
+            <div style={{fontSize:14,color:"rgba(255,255,255,.4)",marginBottom:20}}>wins the game!</div>
+            <button onClick={onBack} className="gb" style={{width:"100%",padding:"13px",borderRadius:12,border:"none",
+              background:GOLDBTN,color:"#3c2200",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:F}}>
+              🏠 Back to Menu
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1796,6 +2348,7 @@ export default function App(){
   const[playerNames,setPlayerNames]=useState(["Player 1","Player 2"]);
   const[bets,setBets]=useState([0,0]);
   const[aiDifficulty,setAiDifficulty]=useState("medium");
+  const[onlineSession,setOnlineSession]=useState(null); // {roomId,playerIndex,playerName,initialState}
 
   // Tournament state
   const[tournament,setTournament]=useState(null);   // selected tournament object
@@ -1871,12 +2424,27 @@ export default function App(){
           onBack={()=>setScreen("menu")}
           onSelect={mode=>{
             if(mode==="tournament"){setTournament(null);setScreen("tournselect");return;}
+            if(mode==="online"){setScreen("online");return;}
             setTournament(null);
             setVsAI(mode==="ai");
             setAiDifficulty("medium");
             setSavedGame(null);
             setScreen("namepick");
           }}/>}
+
+      {screen==="online"      &&<OnlineLobbyScreen
+          onBack={()=>setScreen("modepick")}
+          onStartGame={session=>{
+            setOnlineSession(session);
+            setScreen("onlinegame");
+          }}/>}
+
+      {screen==="onlinegame"  &&onlineSession&&<OnlineGameScreen
+          roomId={onlineSession.roomId}
+          playerIndex={onlineSession.playerIndex}
+          playerName={onlineSession.playerName}
+          initialState={onlineSession.initialState}
+          onBack={()=>{setOnlineSession(null);setScreen("menu");}}/>}
 
       {screen==="tournselect" &&<TournamentScreen
           coins={coins}
