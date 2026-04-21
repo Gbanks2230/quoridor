@@ -438,11 +438,29 @@ function aiPickMove(g, difficulty="medium"){
 }
 
 function WinSound({winner}){
-  useEffect(()=>{
-    if(winner===0) SFX.win();
-    else SFX.lose();
-  },[]);
+  useEffect(()=>{ if(winner===0)SFX.win(); else SFX.lose(); },[]);
   return null;
+}
+
+function BackHeader({onBack,title,subtitle}){
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 20px",
+      background:"rgba(0,0,0,.5)",backdropFilter:"blur(12px)",
+      borderBottom:"1px solid rgba(255,208,96,.1)",
+      position:"sticky",top:0,zIndex:10,flexShrink:0}}>
+      <button onClick={onBack} style={{
+        width:42,height:42,borderRadius:12,border:"1px solid rgba(255,208,96,.25)",
+        background:"rgba(255,208,96,.1)",color:GOLD,fontSize:20,cursor:"pointer",
+        fontFamily:F,display:"flex",alignItems:"center",justifyContent:"center",
+        fontWeight:700,flexShrink:0,
+      }}>‹</button>
+      <div>
+        <div style={{fontSize:18,fontWeight:900,color:GOLD,lineHeight:1}}>{title}</div>
+        {subtitle&&<div style={{fontSize:9,color:"rgba(255,210,80,.4)",
+          letterSpacing:".12em",fontWeight:600,marginTop:2}}>{subtitle}</div>}
+      </div>
+    </div>
+  );
 }
 // ─────────────────────────────────────────────────────────────────────────────
 function Pawn({pi}){
@@ -734,47 +752,36 @@ function ModePickerScreen({onSelect,onBack}){
   const[vis,setVis]=useState(false);
   useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
   return(
-    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
-      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,padding:24}}>
-      <div style={{textAlign:"center",opacity:vis?1:0,transition:"opacity .4s"}}>
-        <div style={{fontSize:26,fontWeight:900,color:GOLD,marginBottom:6}}>NEW GAME</div>
-        <div style={{fontSize:13,color:"rgba(255,255,255,.35)"}}>Choose your game mode</div>
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,display:"flex",flexDirection:"column"}}>
+      <BackHeader onBack={onBack} title="NEW GAME" subtitle="CHOOSE YOUR MODE"/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+        flex:1,gap:16,padding:24}}>
+        <div style={{display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:300,
+          opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(16px)",transition:"all .45s ease .1s"}}>
+          {[
+            {label:"2 Players",  sub:"Pass & play with a friend",     icon:"👥",mode:"2p"},
+            {label:"vs AI",      sub:"Play against the computer",      icon:"🤖",mode:"ai"},
+            {label:"Online",     sub:"Challenge a friend remotely",    icon:"🌐",mode:"online",teal:true},
+            {label:"Tournament", sub:"Compete for glory & coins",      icon:"🏆",mode:"tournament",gold:true},
+          ].map(({label,sub,icon,mode,gold,teal})=>(
+            <button key={mode} onClick={()=>onSelect(mode)}
+              style={{display:"flex",alignItems:"center",gap:16,padding:"18px 20px",borderRadius:16,
+                border:`1px solid ${gold?GOLD+"88":teal?P1C+"88":"rgba(255,255,255,.1)"}`,
+                background:gold?GOLDBTN:teal?`linear-gradient(135deg,${P1D},${P1C})`:"rgba(255,255,255,.07)",
+                cursor:"pointer",fontFamily:F,transition:"transform .12s",
+                boxShadow:gold?`0 6px 26px ${GOLD}55`:teal?`0 6px 26px ${P1C}40`:"none"}}
+              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
+              onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+              <span style={{fontSize:28}}>{icon}</span>
+              <div style={{textAlign:"left"}}>
+                <div style={{fontWeight:800,fontSize:15,color:(gold||teal)?"#fff":"rgba(255,255,255,.9)"}}>{label}</div>
+                <div style={{fontSize:11,color:(gold||teal)?"rgba(255,255,255,.55)":"rgba(255,255,255,.4)",marginTop:2}}>{sub}</div>
+              </div>
+              <span style={{marginLeft:"auto",color:(gold||teal)?"rgba(255,255,255,.35)":"rgba(255,255,255,.2)",fontSize:18}}>›</span>
+            </button>
+          ))}
+        </div>
       </div>
-      <div style={{
-        display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:300,
-        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(16px)",transition:"all .45s ease .1s",
-      }}>
-        {[
-          {label:"2 Players",    sub:"Pass & play with a friend",          icon:"👥",mode:"2p"},
-          {label:"vs AI",        sub:"Play against the computer",           icon:"🤖",mode:"ai"},
-          {label:"Online",       sub:"Challenge a friend remotely",         icon:"🌐",mode:"online",teal:true},
-          {label:"Tournament",   sub:"Compete for glory & coins",           icon:"🏆",mode:"tournament",gold:true},
-        ].map(({label,sub,icon,mode,gold,teal})=>(
-          <button key={mode} onClick={()=>onSelect(mode)}
-            style={{
-              display:"flex",alignItems:"center",gap:16,
-              padding:"18px 20px",borderRadius:16,
-              border:`1px solid ${gold?GOLD+"88":teal?P1C+"88":"rgba(255,255,255,.1)"}`,
-              background:gold?GOLDBTN:teal?`linear-gradient(135deg,${P1D},${P1C})`:"rgba(255,255,255,.07)",
-              cursor:"pointer",fontFamily:F,transition:"transform .12s",
-              boxShadow:gold?`0 6px 26px ${GOLD}55`:teal?`0 6px 26px ${P1C}40`:"none",
-            }}
-            onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
-            onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-            <span style={{fontSize:28}}>{icon}</span>
-            <div style={{textAlign:"left"}}>
-              <div style={{fontWeight:800,fontSize:15,color:(gold||teal)?"#fff":"rgba(255,255,255,.9)"}}>{label}</div>
-              <div style={{fontSize:11,color:(gold||teal)?"rgba(255,255,255,.55)":"rgba(255,255,255,.4)",marginTop:2}}>{sub}</div>
-            </div>
-            <span style={{marginLeft:"auto",color:(gold||teal)?"rgba(255,255,255,.35)":"rgba(255,255,255,.2)",fontSize:18}}>›</span>
-          </button>
-        ))}
-      </div>
-      <button onClick={onBack}
-        style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",border:"none",
-          cursor:"pointer",fontFamily:F,fontWeight:600,marginTop:8}}>
-        ‹ Back
-      </button>
     </div>
   );
 }
@@ -782,16 +789,16 @@ function ModePickerScreen({onSelect,onBack}){
 // ─────────────────────────────────────────────────────────────────────────────
 // ONLINE LOBBY SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
-function OnlineLobbyScreen({onBack, onStartGame}){
-  const[tab,setTab]=useState("create"); // "create" | "join"
+function OnlineLobbyScreen({onBack, onStartGame, coins}){
+  const[tab,setTab]=useState("create");
   const[name,setName]=useState("");
   const[code,setCode]=useState("");
-  const[status,setStatus]=useState("idle"); // idle|creating|waiting|joining|error
+  const[status,setStatus]=useState("idle");
   const[roomCode,setRoomCode]=useState("");
   const[errorMsg,setErrorMsg]=useState("");
-  const[vis,setVis]=useState(false);
+  const[bet,setBet]=useState(0);
+  const[pendingRoom,setPendingRoom]=useState(null); // room waiting for bet confirm
   const pollStop=useRef(null);
-  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
   useEffect(()=>()=>{ if(pollStop.current) pollStop.current(); },[]);
 
   const createRoom=async()=>{
@@ -804,23 +811,18 @@ function OnlineLobbyScreen({onBack, onStartGame}){
       hW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
       vW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
       turn:Math.random()<0.5?0:1, mode:"move", ori:"h", winner:null,
-      phase:"waiting", // waiting | playing
-      host:name.trim(),
+      phase:"waiting", host:name.trim(), bet,
     };
     try{
       await sb.createRoom(id, initState);
       setStatus("waiting");
-      // Poll until guest joins
       pollStop.current = sb.pollRoom(id, state=>{
         if(state.phase==="playing"){
           if(pollStop.current) pollStop.current();
-          onStartGame({roomId:id, playerIndex:0, playerName:name.trim(), initialState:state});
+          onStartGame({roomId:id, playerIndex:0, playerName:name.trim(), initialState:state, bet});
         }
       });
-    }catch(e){
-      setStatus("error");
-      setErrorMsg("Failed to create room. Check connection.");
-    }
+    }catch(e){ setStatus("error"); setErrorMsg("Failed to create room. Check connection."); }
   };
 
   const joinRoom=async()=>{
@@ -830,122 +832,157 @@ function OnlineLobbyScreen({onBack, onStartGame}){
       const room=await sb.getRoom(code.trim().toUpperCase());
       if(!room){ setStatus("error"); setErrorMsg("Room not found. Check the code."); return; }
       if(room.state.phase!=="waiting"){ setStatus("error"); setErrorMsg("Game already started."); return; }
-      // Update room with guest name and set phase to playing
-      const newState={
-        ...room.state,
-        players:[
-          room.state.players[0],
-          {...room.state.players[1], name:name.trim(), row:0, col:4}
-        ],
-        phase:"playing",
-      };
-      await sb.updateRoom(code.trim().toUpperCase(), newState);
-      onStartGame({roomId:code.trim().toUpperCase(), playerIndex:1, playerName:name.trim(), initialState:newState});
-    }catch(e){
-      setStatus("error");
-      setErrorMsg("Connection error. Try again.");
-    }
+      if(room.state.bet>0){
+        // Show confirmation before joining
+        setPendingRoom(room);
+        setStatus("betconfirm");
+        return;
+      }
+      await doJoin(room, code.trim().toUpperCase());
+    }catch(e){ setStatus("error"); setErrorMsg("Connection error. Try again."); }
+  };
+
+  const doJoin=async(room, roomId)=>{
+    const newState={
+      ...room.state,
+      players:[room.state.players[0],{...room.state.players[1],name:name.trim(),row:0,col:4}],
+      phase:"playing",
+    };
+    await sb.updateRoom(roomId, newState);
+    onStartGame({roomId, playerIndex:1, playerName:name.trim(), initialState:newState, bet:room.state.bet||0});
   };
 
   return(
-    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
-      display:"flex",flexDirection:"column",alignItems:"center",
-      justifyContent:"center",gap:20,padding:24,
-      opacity:vis?1:0,transition:"opacity .4s"}}>
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,display:"flex",flexDirection:"column"}}>
+      <BackHeader onBack={onBack} title="ONLINE MULTIPLAYER" subtitle="PLAY WITH A FRIEND"/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+        flex:1,gap:20,padding:24}}>
 
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:32,marginBottom:6}}>🌐</div>
-        <div style={{fontSize:24,fontWeight:900,color:GOLD}}>ONLINE MULTIPLAYER</div>
-        <div style={{fontSize:12,color:"rgba(255,255,255,.35)",marginTop:4}}>Play with a friend remotely</div>
-      </div>
-
-      {/* Name input — always shown */}
-      {(status==="idle"||status==="error")&&(
-        <div style={{width:"100%",maxWidth:300,display:"flex",flexDirection:"column",gap:12}}>
-          <input value={name} onChange={e=>setName(e.target.value)} maxLength={12}
-            placeholder="Your name…" autoFocus
-            style={{width:"100%",padding:"13px 16px",borderRadius:12,
-              border:`2px solid ${name.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
-              background:"rgba(255,255,255,.07)",color:"#fff",
-              fontSize:15,fontWeight:700,fontFamily:F,outline:"none"}}/>
-
-          {/* Tab toggle */}
-          <div style={{display:"flex",background:"rgba(0,0,0,.4)",borderRadius:12,padding:4,gap:3}}>
-            {["create","join"].map(t=>(
-              <button key={t} onClick={()=>{setTab(t);setErrorMsg("");}} style={{
-                flex:1,padding:"10px",borderRadius:9,border:"none",cursor:"pointer",
-                background:tab===t?GOLDBTN:"transparent",
-                color:tab===t?"#3c2200":"rgba(255,255,255,.4)",
-                fontWeight:800,fontSize:12,fontFamily:F,transition:"all .15s",
-              }}>{t==="create"?"🏠 CREATE ROOM":"🔑 JOIN ROOM"}</button>
-            ))}
+        {/* Bet confirmation modal */}
+        {status==="betconfirm"&&pendingRoom&&(
+          <div style={{width:"100%",maxWidth:300,display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+            <div style={{fontSize:36}}>🪙</div>
+            <div style={{fontSize:20,fontWeight:900,color:GOLD}}>Bet Confirmation</div>
+            <div style={{textAlign:"center",fontSize:13,color:"rgba(255,255,255,.5)",lineHeight:1.8}}>
+              The host set a bet of<br/>
+              <span style={{fontSize:28,fontWeight:900,color:GOLD}}>{pendingRoom.state.bet.toLocaleString()} 🪙</span>
+            </div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,.3)"}}>
+              Total pot: <strong style={{color:GOLD}}>{(pendingRoom.state.bet*2).toLocaleString()} 🪙</strong> — winner takes all
+            </div>
+            {coins[1]<pendingRoom.state.bet&&(
+              <div style={{fontSize:11,color:"#ff6060",background:"rgba(255,80,80,.1)",
+                padding:"8px 12px",borderRadius:8}}>⚠ Not enough coins</div>
+            )}
+            <div style={{display:"flex",gap:10,width:"100%"}}>
+              <button onClick={async()=>{setStatus("joining");await doJoin(pendingRoom,code.trim().toUpperCase());}}
+                disabled={coins[1]<pendingRoom.state.bet}
+                style={{flex:1,padding:"14px",borderRadius:12,border:"none",cursor:"pointer",fontFamily:F,
+                  background:coins[1]>=pendingRoom.state.bet?GOLDBTN:"rgba(255,255,255,.1)",
+                  color:coins[1]>=pendingRoom.state.bet?"#3c2200":"rgba(255,255,255,.3)",
+                  fontWeight:800,fontSize:14}}>✓ Accept</button>
+              <button onClick={()=>{setPendingRoom(null);setStatus("idle");}}
+                style={{flex:1,padding:"14px",borderRadius:12,cursor:"pointer",fontFamily:F,
+                  border:"1px solid rgba(255,255,255,.1)",background:"transparent",
+                  color:"rgba(255,255,255,.4)",fontWeight:700,fontSize:14}}>✕ Cancel</button>
+            </div>
           </div>
+        )}
 
-          {tab==="join"&&(
-            <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} maxLength={6}
-              placeholder="Enter 6-digit room code"
+        {(status==="idle"||status==="error")&&(
+          <div style={{width:"100%",maxWidth:300,display:"flex",flexDirection:"column",gap:12}}>
+            <input value={name} onChange={e=>setName(e.target.value)} maxLength={12}
+              placeholder="Your name…" autoFocus
               style={{width:"100%",padding:"13px 16px",borderRadius:12,
-                border:`2px solid ${code.trim()?GOLD+"80":"rgba(255,255,255,.1)"}`,
-                background:"rgba(255,255,255,.07)",color:GOLD,
-                fontSize:18,fontWeight:900,fontFamily:F,outline:"none",
-                textAlign:"center",letterSpacing:".2em"}}/>
-          )}
-
-          {errorMsg&&(
-            <div style={{fontSize:12,color:"#ff6060",textAlign:"center",padding:"8px",
-              background:"rgba(255,80,80,.1)",borderRadius:8}}>{errorMsg}</div>
-          )}
-
-          <button
-            onClick={tab==="create"?createRoom:joinRoom}
-            disabled={!name.trim()||(tab==="join"&&code.trim().length!==6)}
-            style={{
-              padding:"15px",borderRadius:12,border:"none",fontFamily:F,
-              cursor:name.trim()?"pointer":"not-allowed",
-              background:name.trim()?GOLDBTN:"rgba(255,255,255,.08)",
-              color:name.trim()?"#3c2200":"rgba(255,255,255,.25)",
-              fontWeight:900,fontSize:14,
-              boxShadow:name.trim()?`0 6px 24px ${GOLD}45`:"none",
-            }}>
-            {tab==="create"?"CREATE ROOM →":"JOIN GAME →"}
-          </button>
-        </div>
-      )}
-
-      {/* Waiting state */}
-      {status==="waiting"&&(
-        <div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
-          <div style={{fontSize:13,color:"rgba(255,255,255,.5)"}}>Share this code with your friend:</div>
-          <div style={{
-            fontSize:42,fontWeight:900,color:GOLD,letterSpacing:".22em",
-            padding:"16px 28px",borderRadius:16,
-            background:"rgba(255,208,96,.1)",border:"2px solid rgba(255,208,96,.3)",
-          }}>{roomCode}</div>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:10,height:10,borderRadius:"50%",background:P1C,
-              animation:"pulse .8s ease-in-out infinite"}}/>
-            <div style={{fontSize:13,color:"rgba(255,255,255,.4)"}}>Waiting for opponent to join…</div>
+                border:`2px solid ${name.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
+                background:"rgba(255,255,255,.07)",color:"#fff",
+                fontSize:15,fontWeight:700,fontFamily:F,outline:"none"}}/>
+            <div style={{display:"flex",background:"rgba(0,0,0,.4)",borderRadius:12,padding:4,gap:3}}>
+              {["create","join"].map(t=>(
+                <button key={t} onClick={()=>{setTab(t);setErrorMsg("");}} style={{
+                  flex:1,padding:"10px",borderRadius:9,border:"none",cursor:"pointer",
+                  background:tab===t?GOLDBTN:"transparent",
+                  color:tab===t?"#3c2200":"rgba(255,255,255,.4)",
+                  fontWeight:800,fontSize:12,fontFamily:F,transition:"all .15s",
+                }}>{t==="create"?"🏠 CREATE ROOM":"🔑 JOIN ROOM"}</button>
+              ))}
+            </div>
+            {tab==="create"&&(
+              <div style={{padding:"12px 14px",borderRadius:12,
+                background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.08)"}}>
+                <div style={{fontSize:11,color:"rgba(255,255,255,.4)",marginBottom:8}}>Bet amount (optional)</div>
+                <input type="range" min={0} max={Math.min(500,coins[0])} step={10} value={bet}
+                  onChange={e=>setBet(Number(e.target.value))}
+                  style={{width:"100%",accentColor:GOLD,cursor:"pointer"}}/>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+                  <div style={{display:"flex",gap:6}}>
+                    {[0,50,100,200].filter(v=>v<=coins[0]).map(v=>(
+                      <button key={v} onClick={()=>setBet(v)} style={{
+                        padding:"3px 8px",borderRadius:6,border:"none",cursor:"pointer",fontFamily:F,
+                        background:bet===v?"rgba(255,208,96,.3)":"rgba(255,255,255,.08)",
+                        color:bet===v?GOLD:"rgba(255,255,255,.4)",fontSize:10,fontWeight:700}}>
+                        {v===0?"Free":v}
+                      </button>
+                    ))}
+                  </div>
+                  <span style={{fontSize:13,fontWeight:800,color:bet>0?GOLD:"rgba(255,255,255,.3)"}}>
+                    {bet>0?`${bet} 🪙`:"Free"}
+                  </span>
+                </div>
+                {bet>0&&<div style={{fontSize:10,color:"rgba(255,255,255,.25)",marginTop:4}}>
+                  Opponent must match — pot: {bet*2} 🪙
+                </div>}
+              </div>
+            )}
+            {tab==="join"&&(
+              <input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} maxLength={6}
+                placeholder="Enter 6-digit room code"
+                style={{width:"100%",padding:"13px 16px",borderRadius:12,
+                  border:`2px solid ${code.trim()?GOLD+"80":"rgba(255,255,255,.1)"}`,
+                  background:"rgba(255,255,255,.07)",color:GOLD,
+                  fontSize:18,fontWeight:900,fontFamily:F,outline:"none",
+                  textAlign:"center",letterSpacing:".2em"}}/>
+            )}
+            {errorMsg&&<div style={{fontSize:12,color:"#ff6060",textAlign:"center",padding:"8px",
+              background:"rgba(255,80,80,.1)",borderRadius:8}}>{errorMsg}</div>}
+            <button onClick={tab==="create"?createRoom:joinRoom}
+              disabled={!name.trim()||(tab==="join"&&code.trim().length!==6)}
+              style={{padding:"15px",borderRadius:12,border:"none",fontFamily:F,
+                cursor:name.trim()?"pointer":"not-allowed",
+                background:name.trim()?GOLDBTN:"rgba(255,255,255,.08)",
+                color:name.trim()?"#3c2200":"rgba(255,255,255,.25)",
+                fontWeight:900,fontSize:14,
+                boxShadow:name.trim()?`0 6px 24px ${GOLD}45`:"none"}}>
+              {tab==="create"?"CREATE ROOM →":"JOIN GAME →"}
+            </button>
           </div>
-          <button onClick={()=>{
-            if(pollStop.current) pollStop.current();
-            setStatus("idle");setRoomCode("");
-          }} style={{fontSize:11,color:"rgba(255,255,255,.25)",background:"none",
-            border:"none",cursor:"pointer",fontFamily:F,marginTop:8}}>Cancel</button>
-        </div>
-      )}
+        )}
 
-      {status==="creating"&&(
-        <div style={{fontSize:13,color:"rgba(255,255,255,.4)"}}>Creating room…</div>
-      )}
-      {status==="joining"&&(
-        <div style={{fontSize:13,color:"rgba(255,255,255,.4)"}}>Joining game…</div>
-      )}
-
-      <button onClick={onBack}
-        style={{fontSize:12,color:"rgba(255,255,255,.2)",background:"none",
-          border:"none",cursor:"pointer",fontFamily:F,fontWeight:600}}>
-        ‹ Back
-      </button>
+        {status==="waiting"&&(
+          <div style={{textAlign:"center",display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+            <div style={{fontSize:13,color:"rgba(255,255,255,.5)"}}>Share this code with your friend:</div>
+            <div style={{fontSize:42,fontWeight:900,color:GOLD,letterSpacing:".22em",
+              padding:"16px 28px",borderRadius:16,
+              background:"rgba(255,208,96,.1)",border:"2px solid rgba(255,208,96,.3)"}}>
+              {roomCode}
+            </div>
+            {bet>0&&<div style={{fontSize:12,color:GOLD+"aa"}}>Bet: {bet} 🪙 per player</div>}
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:10,height:10,borderRadius:"50%",background:P1C,animation:"pulse .8s ease-in-out infinite"}}/>
+              <div style={{fontSize:13,color:"rgba(255,255,255,.4)"}}>Waiting for opponent to join…</div>
+            </div>
+            <button onClick={()=>{if(pollStop.current)pollStop.current();setStatus("idle");setRoomCode("");setBet(0);}}
+              style={{fontSize:11,color:"rgba(255,255,255,.25)",background:"none",border:"none",cursor:"pointer",fontFamily:F,marginTop:8}}>
+              Cancel
+            </button>
+          </div>
+        )}
+        {(status==="creating"||status==="joining")&&(
+          <div style={{fontSize:13,color:"rgba(255,255,255,.4)"}}>
+            {status==="creating"?"Creating room…":"Joining game…"}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -953,12 +990,12 @@ function OnlineLobbyScreen({onBack, onStartGame}){
 // ─────────────────────────────────────────────────────────────────────────────
 // ONLINE GAME SCREEN  (wraps GameScreen with real-time sync)
 // ─────────────────────────────────────────────────────────────────────────────
-function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack}){
+function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack, bet=0, onCoinsUpdate}){
   const[g,setG]=useState(initialState);
   const[connected,setConnected]=useState(true);
+  const[potClaimed,setPotClaimed]=useState(false);
   const isMyTurn = g.turn===playerIndex && !g.winner;
   const pollStop=useRef(null);
-  const lastUpdated=useRef(null);
   const names=[
     g.players[0].name||"Player 1",
     g.players[1].name||"Player 2",
@@ -1234,6 +1271,12 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
           justifyContent:"center",padding:20,background:"rgba(0,0,0,.88)",backdropFilter:"blur(22px)"}}>
           {g.winner===playerIndex&&<Confetti/>}
           <WinSound winner={g.winner===playerIndex?0:1}/>
+          {/* Award pot once */}
+          {!potClaimed&&bet>0&&g.winner===playerIndex&&(()=>{
+            setPotClaimed(true);
+            onCoinsUpdate&&onCoinsUpdate(bet*2);
+            return null;
+          })()}
           <div style={{background:"linear-gradient(145deg,#2A1508,#1A0C04)",
             border:`2px solid ${PC[g.winner]}50`,borderRadius:22,padding:"26px 24px",
             textAlign:"center",maxWidth:280,width:"100%",position:"relative",overflow:"hidden"}}>
@@ -1245,7 +1288,17 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
             <div style={{fontSize:28,fontWeight:900,color:"rgba(255,255,255,.95)",lineHeight:1,marginBottom:4}}>
               {names[g.winner]}
             </div>
-            <div style={{fontSize:14,color:"rgba(255,255,255,.4)",marginBottom:20}}>wins the game!</div>
+            <div style={{fontSize:14,color:"rgba(255,255,255,.4)",marginBottom:bet>0?10:20}}>wins the game!</div>
+            {bet>0&&(
+              <div style={{marginBottom:16,padding:"10px",borderRadius:10,
+                background:g.winner===playerIndex?"rgba(255,208,96,.12)":"rgba(255,80,80,.08)",
+                border:`1px solid ${g.winner===playerIndex?"rgba(255,208,96,.25)":"rgba(255,80,80,.15)"}`}}>
+                {g.winner===playerIndex
+                  ?<div style={{fontSize:13,fontWeight:800,color:GOLD}}>+{(bet*2).toLocaleString()} 🪙 won!</div>
+                  :<div style={{fontSize:13,color:"rgba(255,120,120,.7)"}}>-{bet.toLocaleString()} 🪙 lost</div>
+                }
+              </div>
+            )}
             <button onClick={onBack} className="gb" style={{width:"100%",padding:"13px",borderRadius:12,border:"none",
               background:GOLDBTN,color:"#3c2200",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:F}}>
               🏠 Back to Menu
@@ -1295,91 +1348,59 @@ function TournamentScreen({coins,onSelect,onBack}){
   useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
 
   return(
-    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
-      display:"flex",flexDirection:"column",alignItems:"center",
-      overflowY:"auto",padding:"28px 20px 40px"}}>
-
-      <div style={{textAlign:"center",marginBottom:24,
-        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(-12px)",transition:"all .45s"}}>
-        <div style={{fontSize:32,marginBottom:6}}>🏆</div>
-        <div style={{fontSize:24,fontWeight:900,color:GOLD,letterSpacing:"-.02em"}}>TOURNAMENT</div>
-        <div style={{fontSize:12,color:"rgba(255,255,255,.35)",marginTop:4}}>Choose your championship</div>
-        <div style={{fontSize:11,color:GOLD+"88",marginTop:6}}>
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,display:"flex",flexDirection:"column",overflowY:"auto"}}>
+      <BackHeader onBack={onBack} title="TOURNAMENT" subtitle="CHOOSE YOUR CHAMPIONSHIP"/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"16px 20px 40px"}}>
+        <div style={{fontSize:11,color:GOLD+"88",marginBottom:16}}>
           💰 Your coins: {coins[0].toLocaleString()} 🪙
         </div>
-      </div>
-
-      <div style={{
-        display:"flex",flexDirection:"column",gap:14,width:"100%",maxWidth:340,
-        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(14px)",
-        transition:"all .5s ease .1s",
-      }}>
-        {TOURNAMENTS.map((t,i)=>{
-          const canAfford=coins[0]>=t.entry;
-          return(
-            <div key={t.id} style={{
-              borderRadius:18,overflow:"hidden",
-              border:`2px solid ${t.color}55`,
-              opacity:canAfford?1:.55,
-              boxShadow:canAfford?`0 8px 32px ${t.color}25`:"none",
-              transition:"all .15s",
-            }}>
-              {/* Header banner */}
-              <div style={{
-                background:`linear-gradient(135deg,${t.dark},${t.color})`,
-                padding:"16px 18px",
-                display:"flex",alignItems:"center",gap:14,
-              }}>
-                <div style={{fontSize:36,lineHeight:1}}>{t.flag}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:18,fontWeight:900,color:"#fff",letterSpacing:".04em"}}>{t.name}</div>
-                  <div style={{fontSize:10,color:"rgba(255,255,255,.6)",marginTop:2}}>
-                    {t.difficulty.toUpperCase()} AI · BEST OF {t.games}
+        <div style={{display:"flex",flexDirection:"column",gap:14,width:"100%",maxWidth:340,
+          opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(14px)",transition:"all .5s ease .1s"}}>
+          {TOURNAMENTS.map((t)=>{
+            const canAfford=coins[0]>=t.entry;
+            return(
+              <div key={t.id} style={{borderRadius:18,overflow:"hidden",
+                border:`2px solid ${t.color}55`,opacity:canAfford?1:.55,
+                boxShadow:canAfford?`0 8px 32px ${t.color}25`:"none",transition:"all .15s"}}>
+                <div style={{background:`linear-gradient(135deg,${t.dark},${t.color})`,
+                  padding:"16px 18px",display:"flex",alignItems:"center",gap:14}}>
+                  <div style={{fontSize:36,lineHeight:1}}>{t.flag}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:18,fontWeight:900,color:"#fff",letterSpacing:".04em"}}>{t.name}</div>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,.6)",marginTop:2}}>
+                      {t.difficulty.toUpperCase()} AI · BEST OF {t.games}
+                    </div>
+                  </div>
+                  <div style={{background:"rgba(0,0,0,.25)",borderRadius:8,padding:"6px 10px",textAlign:"center"}}>
+                    <div style={{fontSize:9,color:"rgba(255,255,255,.6)",fontWeight:700}}>PRIZE</div>
+                    <div style={{fontSize:15,fontWeight:900,color:"#FFD060"}}>{t.prize.toLocaleString()} 🪙</div>
                   </div>
                 </div>
-                <div style={{
-                  background:"rgba(0,0,0,.25)",borderRadius:8,
-                  padding:"6px 10px",textAlign:"center",
-                }}>
-                  <div style={{fontSize:9,color:"rgba(255,255,255,.6)",fontWeight:700}}>PRIZE</div>
-                  <div style={{fontSize:15,fontWeight:900,color:"#FFD060"}}>
-                    {t.prize.toLocaleString()} 🪙
+                <div style={{background:"rgba(255,255,255,.05)",padding:"14px 18px"}}>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,.45)",marginBottom:12,lineHeight:1.6}}>{t.desc}</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>
+                      Entry: <span style={{color:canAfford?GOLD:"#ff6060",fontWeight:700}}>
+                        {t.entry.toLocaleString()} 🪙
+                      </span>
+                      {!canAfford&&<span style={{color:"#ff6060",fontSize:9,marginLeft:6}}>Not enough</span>}
+                    </div>
+                    <button onClick={()=>canAfford&&onSelect(t)} style={{
+                      padding:"9px 20px",borderRadius:10,border:"none",
+                      cursor:canAfford?"pointer":"not-allowed",fontFamily:F,
+                      background:canAfford?`linear-gradient(135deg,${t.dark},${t.color})`:"rgba(255,255,255,.08)",
+                      color:canAfford?"#fff":"rgba(255,255,255,.25)",
+                      fontWeight:800,fontSize:12,letterSpacing:".04em",
+                      boxShadow:canAfford?`0 4px 14px ${t.color}40`:"none",transition:"all .15s"}}>
+                      ENTER →
+                    </button>
                   </div>
                 </div>
               </div>
-
-              {/* Body */}
-              <div style={{background:"rgba(255,255,255,.05)",padding:"14px 18px"}}>
-                <div style={{fontSize:11,color:"rgba(255,255,255,.45)",marginBottom:12,lineHeight:1.6}}>
-                  {t.desc}
-                </div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,.4)"}}>
-                    Entry: <span style={{color:canAfford?GOLD:"#ff6060",fontWeight:700}}>
-                      {t.entry.toLocaleString()} 🪙
-                    </span>
-                    {!canAfford&&<span style={{color:"#ff6060",fontSize:9,marginLeft:6}}>Not enough coins</span>}
-                  </div>
-                  <button onClick={()=>canAfford&&onSelect(t)} style={{
-                    padding:"9px 20px",borderRadius:10,border:"none",
-                    cursor:canAfford?"pointer":"not-allowed",fontFamily:F,
-                    background:canAfford?`linear-gradient(135deg,${t.dark},${t.color})`:"rgba(255,255,255,.08)",
-                    color:canAfford?"#fff":"rgba(255,255,255,.25)",
-                    fontWeight:800,fontSize:12,letterSpacing:".04em",
-                    boxShadow:canAfford?`0 4px 14px ${t.color}40`:"none",
-                    transition:"all .15s",
-                  }}>ENTER →</button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-
-      <button onClick={onBack} style={{marginTop:20,fontSize:12,color:"rgba(255,255,255,.25)",
-        background:"none",border:"none",cursor:"pointer",fontFamily:F,fontWeight:600}}>
-        ‹ Back
-      </button>
     </div>
   );
 }
@@ -1496,123 +1517,56 @@ function TournamentResultScreen({tournament,playerName,wins,losses,onPlayAgain,o
 // PLAYER NAME SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 function PlayerNameScreen({vsAI, onStart, onBack}){
-  const[vis,setVis]=useState(false);
   const[n1,setN1]=useState("");
   const[n2,setN2]=useState("");
-  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
-
-  const canStart = n1.trim().length>0 && (vsAI || n2.trim().length>0);
-
+  const canStart=n1.trim().length>0&&(vsAI||n2.trim().length>0);
   return(
-    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
-      display:"flex",flexDirection:"column",alignItems:"center",
-      justifyContent:"center",gap:24,padding:24}}>
-
-      <div style={{textAlign:"center",
-        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(-12px)",transition:"all .4s"}}>
-        <div style={{fontSize:26,fontWeight:900,color:GOLD,marginBottom:6}}>
-          {vsAI?"Your Name":"Player Names"}
-        </div>
-        <div style={{fontSize:13,color:"rgba(255,255,255,.35)"}}>
-          {vsAI?"What should we call you?":"Enter both player names to begin"}
-        </div>
-      </div>
-
-      <div style={{
-        display:"flex",flexDirection:"column",gap:14,
-        width:"100%",maxWidth:300,
-        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(14px)",
-        transition:"all .45s ease .1s",
-      }}>
-        {/* P1 input */}
-        <div>
-          <div style={{fontSize:10,fontWeight:800,color:P1C,
-            letterSpacing:".1em",marginBottom:6}}>
-            {vsAI?"YOUR NAME":"PLAYER 1 · TEAL"}
-          </div>
-          <input
-            value={n1}
-            onChange={e=>setN1(e.target.value)}
-            maxLength={12}
-            placeholder={vsAI?"Enter your name…":"e.g. Alex"}
-            autoFocus
-            style={{
-              width:"100%",padding:"14px 16px",borderRadius:12,
-              border:`2px solid ${n1.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
-              background:"rgba(255,255,255,.07)",
-              color:"#fff",fontSize:15,fontWeight:700,fontFamily:F,
-              outline:"none",transition:"border-color .2s",
-            }}
-          />
-        </div>
-
-        {/* P2 input — only for 2P mode */}
-        {!vsAI&&(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,display:"flex",flexDirection:"column"}}>
+      <BackHeader onBack={onBack} title={vsAI?"YOUR NAME":"PLAYER NAMES"} subtitle="ENTER NAMES TO BEGIN"/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,gap:16,padding:24}}>
+        <div style={{display:"flex",flexDirection:"column",gap:14,width:"100%",maxWidth:300}}>
           <div>
-            <div style={{fontSize:10,fontWeight:800,color:P2C,
-              letterSpacing:".1em",marginBottom:6}}>
-              PLAYER 2 · PINK
+            <div style={{fontSize:10,fontWeight:800,color:P1C,letterSpacing:".1em",marginBottom:6}}>
+              {vsAI?"YOUR NAME":"PLAYER 1 · TEAL"}
             </div>
-            <input
-              value={n2}
-              onChange={e=>setN2(e.target.value)}
-              maxLength={12}
-              placeholder="e.g. Jordan"
-              style={{
-                width:"100%",padding:"14px 16px",borderRadius:12,
-                border:`2px solid ${n2.trim()?P2C+"80":"rgba(255,255,255,.1)"}`,
-                background:"rgba(255,255,255,.07)",
-                color:"#fff",fontSize:15,fontWeight:700,fontFamily:F,
-                outline:"none",transition:"border-color .2s",
-              }}
-            />
+            <input value={n1} onChange={e=>setN1(e.target.value)} maxLength={12}
+              placeholder={vsAI?"Enter your name…":"e.g. Alex"} autoFocus
+              style={{width:"100%",padding:"14px 16px",borderRadius:12,
+                border:`2px solid ${n1.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
+                background:"rgba(255,255,255,.07)",color:"#fff",
+                fontSize:15,fontWeight:700,fontFamily:F,outline:"none",transition:"border-color .2s"}}/>
           </div>
-        )}
-
-        {/* AI label preview */}
-        {vsAI&&(
-          <div style={{
-            display:"flex",alignItems:"center",gap:12,
-            padding:"14px 16px",borderRadius:12,
-            background:"rgba(255,255,255,.04)",
-            border:"1px solid rgba(255,255,255,.07)",
-          }}>
-            <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,
-              background:`radial-gradient(circle at 35% 28%,${P2L},${P2C} 50%,${P2D})`}}/>
+          {!vsAI&&(
             <div>
-              <div style={{fontSize:12,fontWeight:800,color:"rgba(255,255,255,.5)"}}>OPPONENT</div>
-              <div style={{fontSize:14,fontWeight:900,color:P2C}}>🤖 AI</div>
+              <div style={{fontSize:10,fontWeight:800,color:P2C,letterSpacing:".1em",marginBottom:6}}>PLAYER 2 · PINK</div>
+              <input value={n2} onChange={e=>setN2(e.target.value)} maxLength={12} placeholder="e.g. Jordan"
+                style={{width:"100%",padding:"14px 16px",borderRadius:12,
+                  border:`2px solid ${n2.trim()?P2C+"80":"rgba(255,255,255,.1)"}`,
+                  background:"rgba(255,255,255,.07)",color:"#fff",
+                  fontSize:15,fontWeight:700,fontFamily:F,outline:"none",transition:"border-color .2s"}}/>
             </div>
-          </div>
-        )}
-
-        {/* Start button */}
-        <button
-          onClick={()=>{
-            if(!canStart) return;
-            onStart(
-              n1.trim()||"Player 1",
-              vsAI?"AI":(n2.trim()||"Player 2")
-            );
-          }}
-          style={{
-            marginTop:4,padding:"16px",borderRadius:14,border:"none",
-            cursor:canStart?"pointer":"not-allowed",fontFamily:F,
-            background:canStart?GOLDBTN:"rgba(255,255,255,.1)",
-            color:canStart?"#3c2200":"rgba(255,255,255,.25)",
-            fontWeight:900,fontSize:15,letterSpacing:".04em",
-            boxShadow:canStart?`0 6px 26px ${GOLD}45`:"none",
-            transition:"all .15s",
-          }}>
-          LET'S PLAY →
-        </button>
+          )}
+          {vsAI&&(
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderRadius:12,
+              background:"rgba(255,255,255,.04)",border:"1px solid rgba(255,255,255,.07)"}}>
+              <span style={{fontSize:24}}>🤖</span>
+              <div>
+                <div style={{fontSize:12,fontWeight:800,color:"rgba(255,255,255,.5)"}}>OPPONENT</div>
+                <div style={{fontSize:14,fontWeight:900,color:P2C}}>AI</div>
+              </div>
+            </div>
+          )}
+          <button onClick={()=>{if(!canStart)return;onStart(n1.trim()||"Player 1",vsAI?"AI":(n2.trim()||"Player 2"));}}
+            style={{marginTop:4,padding:"16px",borderRadius:14,border:"none",
+              cursor:canStart?"pointer":"not-allowed",fontFamily:F,
+              background:canStart?GOLDBTN:"rgba(255,255,255,.1)",
+              color:canStart?"#3c2200":"rgba(255,255,255,.25)",
+              fontWeight:900,fontSize:15,letterSpacing:".04em",
+              boxShadow:canStart?`0 6px 26px ${GOLD}45`:"none",transition:"all .15s"}}>
+            LET'S PLAY →
+          </button>
+        </div>
       </div>
-
-      <button onClick={onBack}
-        style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",
-          border:"none",cursor:"pointer",fontFamily:F,fontWeight:600}}>
-        ‹ Back
-      </button>
     </div>
   );
 }
@@ -1671,56 +1625,31 @@ function BettingScreen({names,coins,vsAI,onStart,onBack}){
   );
 
   return(
-    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
-      display:"flex",flexDirection:"column",alignItems:"center",
-      justifyContent:"center",gap:20,padding:24}}>
-
-      <div style={{textAlign:"center",opacity:vis?1:0,transition:"opacity .4s"}}>
-        <div style={{fontSize:32,marginBottom:6}}>🪙</div>
-        <div style={{fontSize:24,fontWeight:900,color:GOLD,marginBottom:4}}>PLACE YOUR BETS</div>
-        <div style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>Winner takes the pot</div>
-      </div>
-
-      <div style={{
-        width:"100%",maxWidth:320,display:"flex",flexDirection:"column",gap:12,
-        opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(14px)",
-        transition:"all .45s ease .1s",
-      }}>
-        <BetInput pi={0} val={bet1} setVal={setBet1} max={c1} color={P1C}/>
-        {!vsAI&&<BetInput pi={1} val={bet2} setVal={setBet2} max={c2} color={P2C}/>}
-
-        {/* Pot preview */}
-        <div style={{
-          textAlign:"center",padding:"12px",borderRadius:12,
-          background:"rgba(255,208,96,.08)",border:"1px solid rgba(255,208,96,.2)",
-        }}>
-          <div style={{fontSize:11,color:"rgba(255,208,96,.5)",fontWeight:700,marginBottom:2}}>TOTAL POT</div>
-          <div style={{fontSize:24,fontWeight:900,color:GOLD}}>
-            {(vsAI?bet1*2:bet1+bet2).toLocaleString()} 🪙
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,display:"flex",flexDirection:"column"}}>
+      <BackHeader onBack={onBack} title="PLACE YOUR BETS" subtitle="WINNER TAKES THE POT"/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flex:1,gap:16,padding:24}}>
+        <div style={{width:"100%",maxWidth:320,display:"flex",flexDirection:"column",gap:12,
+          opacity:vis?1:0,transform:vis?"translateY(0)":"translateY(14px)",transition:"all .45s ease .1s"}}>
+          <BetInput pi={0} val={bet1} setVal={setBet1} max={c1} color={P1C}/>
+          {!vsAI&&<BetInput pi={1} val={bet2} setVal={setBet2} max={c2} color={P2C}/>}
+          <div style={{textAlign:"center",padding:"12px",borderRadius:12,
+            background:"rgba(255,208,96,.08)",border:"1px solid rgba(255,208,96,.2)"}}>
+            <div style={{fontSize:11,color:"rgba(255,208,96,.5)",fontWeight:700,marginBottom:2}}>TOTAL POT</div>
+            <div style={{fontSize:24,fontWeight:900,color:GOLD}}>{(vsAI?bet1*2:bet1+bet2).toLocaleString()} 🪙</div>
+            {vsAI&&<div style={{fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>AI matches your bet</div>}
           </div>
-          {vsAI&&<div style={{fontSize:10,color:"rgba(255,255,255,.3)",marginTop:2}}>AI matches your bet</div>}
+          <button onClick={()=>canBet&&onStart(bet1,vsAI?bet1:bet2)} style={{
+            padding:"16px",borderRadius:14,border:"none",cursor:canBet?"pointer":"not-allowed",
+            background:canBet?GOLDBTN:"rgba(255,255,255,.08)",
+            color:canBet?"#3c2200":"rgba(255,255,255,.25)",
+            fontWeight:900,fontSize:15,fontFamily:F,
+            boxShadow:canBet?`0 6px 24px ${GOLD}45`:"none",transition:"all .15s"}}>🎲 START GAME</button>
+          <button onClick={()=>onStart(0,0)} style={{
+            padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
+            background:"transparent",color:"rgba(255,255,255,.2)",
+            fontSize:11,fontWeight:600,fontFamily:F}}>Skip betting — play for free</button>
         </div>
-
-        <button onClick={()=>canBet&&onStart(bet1,vsAI?bet1:bet2)} style={{
-          padding:"16px",borderRadius:14,border:"none",cursor:canBet?"pointer":"not-allowed",
-          background:canBet?GOLDBTN:"rgba(255,255,255,.08)",
-          color:canBet?"#3c2200":"rgba(255,255,255,.25)",
-          fontWeight:900,fontSize:15,fontFamily:F,
-          boxShadow:canBet?`0 6px 24px ${GOLD}45`:"none",
-          transition:"all .15s",
-        }}>🎲 START GAME</button>
-
-        <button onClick={()=>onStart(0,0)} style={{
-          padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-          background:"transparent",color:"rgba(255,255,255,.2)",
-          fontSize:11,fontWeight:600,fontFamily:F,
-        }}>Skip betting — play for free</button>
       </div>
-
-      <button onClick={onBack} style={{fontSize:12,color:"rgba(255,255,255,.2)",
-        background:"none",border:"none",cursor:"pointer",fontFamily:F,fontWeight:600}}>
-        ‹ Back
-      </button>
     </div>
   );
 }
@@ -2303,37 +2232,29 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
 // ─────────────────────────────────────────────────────────────────────────────
 function TournamentNameScreen({tournament, onStart, onBack}){
   const[n,setN]=useState("");
-  const[vis,setVis]=useState(false);
-  useEffect(()=>{setTimeout(()=>setVis(true),60);},[]);
   return(
-    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
-      display:"flex",flexDirection:"column",alignItems:"center",
-      justifyContent:"center",gap:20,padding:24,
-      opacity:vis?1:0,transition:"opacity .4s"}}>
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:40}}>{tournament?.flag}</div>
-        <div style={{fontSize:22,fontWeight:900,color:GOLD,marginBottom:4}}>
-          {tournament?.name} TOURNAMENT
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,display:"flex",flexDirection:"column"}}>
+      <BackHeader onBack={onBack} title={`${tournament?.name||""} TOURNAMENT`} subtitle={tournament?.flag}/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+        flex:1,gap:16,padding:24}}>
+        <div style={{textAlign:"center",marginBottom:4}}>
+          <div style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>Enter your name to begin</div>
         </div>
-        <div style={{fontSize:12,color:"rgba(255,255,255,.35)"}}>Enter your name to begin</div>
+        <input value={n} onChange={e=>setN(e.target.value)} maxLength={12}
+          placeholder="Your name…" autoFocus
+          style={{width:"100%",maxWidth:280,padding:"14px 16px",borderRadius:12,
+            border:`2px solid ${n.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
+            background:"rgba(255,255,255,.07)",color:"#fff",
+            fontSize:15,fontWeight:700,fontFamily:F,outline:"none"}}/>
+        <button onClick={()=>{if(!n.trim())return;onStart(n.trim());}}
+          style={{width:"100%",maxWidth:280,padding:"15px",borderRadius:12,border:"none",
+            cursor:n.trim()?"pointer":"not-allowed",fontFamily:F,
+            background:n.trim()?GOLDBTN:"rgba(255,255,255,.08)",
+            color:n.trim()?"#3c2200":"rgba(255,255,255,.25)",
+            fontWeight:900,fontSize:14}}>
+          ENTER TOURNAMENT →
+        </button>
       </div>
-      <input value={n} onChange={e=>setN(e.target.value)} maxLength={12}
-        placeholder="Your name…" autoFocus
-        style={{width:"100%",maxWidth:280,padding:"14px 16px",borderRadius:12,
-          border:`2px solid ${n.trim()?P1C+"80":"rgba(255,255,255,.1)"}`,
-          background:"rgba(255,255,255,.07)",color:"#fff",
-          fontSize:15,fontWeight:700,fontFamily:F,outline:"none"}}/>
-      <button onClick={()=>{if(!n.trim())return; onStart(n.trim());}}
-        style={{width:"100%",maxWidth:280,padding:"15px",borderRadius:12,border:"none",
-          cursor:n.trim()?"pointer":"not-allowed",fontFamily:F,
-          background:n.trim()?GOLDBTN:"rgba(255,255,255,.08)",
-          color:n.trim()?"#3c2200":"rgba(255,255,255,.25)",
-          fontWeight:900,fontSize:14}}>
-        ENTER TOURNAMENT →
-      </button>
-      <button onClick={onBack}
-        style={{fontSize:12,color:"rgba(255,255,255,.25)",background:"none",
-          border:"none",cursor:"pointer",fontFamily:F}}>‹ Back</button>
     </div>
   );
 }
@@ -2434,7 +2355,14 @@ export default function App(){
 
       {screen==="online"      &&<OnlineLobbyScreen
           onBack={()=>setScreen("modepick")}
+          coins={coins}
           onStartGame={session=>{
+            // Deduct bet from coins when game starts
+            if(session.bet>0){
+              const nc=[...coins];
+              nc[session.playerIndex]-=session.bet;
+              saveCoins(nc);
+            }
             setOnlineSession(session);
             setScreen("onlinegame");
           }}/>}
@@ -2444,6 +2372,12 @@ export default function App(){
           playerIndex={onlineSession.playerIndex}
           playerName={onlineSession.playerName}
           initialState={onlineSession.initialState}
+          bet={onlineSession.bet||0}
+          onCoinsUpdate={amount=>{
+            const nc=[...coins];
+            nc[onlineSession.playerIndex]+=amount;
+            saveCoins(nc);
+          }}
           onBack={()=>{setOnlineSession(null);setScreen("menu");}}/>}
 
       {screen==="tournselect" &&<TournamentScreen
