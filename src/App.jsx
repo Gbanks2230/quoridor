@@ -1231,7 +1231,7 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
                 <button key={label}
                   onClick={()=>isMyTurn&&setG(p=>({...p,mode:m,ori:ori??p.ori}))}
                   className="gb"
-                  style={{flex:1,width:"100%",borderRadius:12,border:"none",cursor:isMyTurn?"pointer":"not-allowed",
+                  style={{flex:1,width:"100%",borderRadius:12,cursor:isMyTurn?"pointer":"not-allowed",
                     background:active?GOLDBTN:"rgba(0,0,0,.55)",
                     border:`1px solid ${active?GOLD+"55":"rgba(255,255,255,.07)"}`,
                     color:active?"#3c2200":isMyTurn?"rgba(255,255,255,.35)":"rgba(255,255,255,.15)",
@@ -2175,7 +2175,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
                 onClick={()=>setG(p=>({...p,mode:m,ori:ori??p.ori}))}
                 className="gb"
                 style={{
-                  flex:1, width:"100%", borderRadius:12, border:"none",
+                  flex:1, width:"100%", borderRadius:12,
                   cursor:"pointer",
                   background:active?GOLDBTN:"rgba(0,0,0,.55)",
                   border:`1px solid ${active?GOLD+"55":"rgba(255,255,255,.07)"}`,
