@@ -812,6 +812,7 @@ function OnlineLobbyScreen({onBack, onStartGame, coins}){
       vW:Array(8).fill(null).map(()=>Array(8).fill(-1)),
       turn:Math.random()<0.5?0:1, mode:"move", ori:"h", winner:null,
       phase:"waiting", host:name.trim(), bet,
+      chat:[],
     };
     try{
       await sb.createRoom(id, initState);
@@ -994,8 +995,16 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
   const[g,setG]=useState(initialState);
   const[connected,setConnected]=useState(true);
   const[potClaimed,setPotClaimed]=useState(false);
+  const[timeLeft,setTimeLeft]=useState(30);
+  const[missedTurns,setMissedTurns]=useState(0);
+  const[chatOpen,setChatOpen]=useState(false);
+  const[chatMsg,setChatMsg]=useState("");
+  const[unread,setUnread]=useState(0);
+  const chatEndRef=useRef(null);
+  const timerRef=useRef(null);
   const isMyTurn = g.turn===playerIndex && !g.winner;
   const pollStop=useRef(null);
+  const chat=g.chat||[];
   const names=[
     g.players[0].name||"Player 1",
     g.players[1].name||"Player 2",
@@ -1004,15 +1013,71 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
   // Poll for remote updates
   useEffect(()=>{
     pollStop.current = sb.pollRoom(roomId, state=>{
-      setG(state);
+      setG(prev=>{
+        // Count new messages as unread if chat is closed
+        const prevLen=(prev.chat||[]).length;
+        const newLen=(state.chat||[]).length;
+        if(!chatOpen&&newLen>prevLen) setUnread(u=>u+(newLen-prevLen));
+        return state;
+      });
       setConnected(true);
     });
     return()=>{ if(pollStop.current) pollStop.current(); };
   },[roomId]);
 
+  // Scroll chat to bottom when opened or new message
+  useEffect(()=>{
+    if(chatOpen) chatEndRef.current?.scrollIntoView({behavior:"smooth"});
+  },[chatOpen,chat.length]);
+
+  // Clear unread when chat opened
+  useEffect(()=>{ if(chatOpen) setUnread(0); },[chatOpen]);
+
+  // Timer
+  useEffect(()=>{
+    if(g.winner||!isMyTurn) return;
+    setTimeLeft(30);
+    clearInterval(timerRef.current);
+    timerRef.current=setInterval(()=>{
+      setTimeLeft(prev=>{
+        if(prev<=5) SFX.urgentTick();
+        else if(prev<=10) SFX.tick();
+        if(prev<=1){
+          clearInterval(timerRef.current);
+          const vm=getVM(g.turn,g.players,g.hW,g.vW);
+          const missed=missedTurns+1;
+          setMissedTurns(missed);
+          if(missed>=3){
+            const winner=1-playerIndex;
+            const newState={...g,winner};
+            setG(newState); pushState(newState);
+          } else if(vm.length>0){
+            const[r,c]=vm[Math.floor(Math.random()*vm.length)];
+            const np=g.players.map((p,i)=>i===g.turn?{...p,row:r,col:c}:p);
+            const won=r===GOALS[g.turn]?g.turn:null;
+            const newState={...g,players:np,turn:won!=null?g.turn:1-g.turn,winner:won};
+            setG(newState); pushState(newState);
+          }
+          return 30;
+        }
+        return prev-1;
+      });
+    },1000);
+    return()=>clearInterval(timerRef.current);
+  },[g.turn,g.winner,isMyTurn]);
+
   const pushState=async(newState)=>{
     try{ await sb.updateRoom(roomId, newState); setConnected(true); }
     catch(e){ setConnected(false); }
+  };
+
+  const sendChat=async(text)=>{
+    if(!text.trim()) return;
+    const msg={from:playerIndex,name:names[playerIndex],text:text.trim(),ts:Date.now()};
+    const newState={...g,chat:[...(g.chat||[]),msg]};
+    setG(newState);
+    await pushState(newState);
+    setChatMsg("");
   };
 
   const vm = g.winner?[]:getVM(g.turn,g.players,g.hW,g.vW);
@@ -1021,6 +1086,8 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
 
   const doMove=(r,c)=>{
     if(!isMyTurn||!isVM(r,c)) return;
+    clearInterval(timerRef.current);
+    setMissedTurns(0);
     SFX.move();
     const np=g.players.map((p,i)=>i===g.turn?{...p,row:r,col:c}:p);
     const won=r===GOALS[g.turn]?g.turn:null;
@@ -1031,6 +1098,8 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
   const doWall=(wr,wc,ori)=>{
     if(!isMyTurn||g.mode!=="wall"||!g.players[g.turn].walls) return;
     if(!canPlace(wr,wc,ori,g.hW,g.vW,g.players)){SFX.invalid();return;}
+    clearInterval(timerRef.current);
+    setMissedTurns(0);
     SFX.wall();
     const nh=g.hW.map(x=>[...x]),nv=g.vW.map(x=>[...x]);
     ori==="h"?(nh[wr][wc]=g.turn):(nv[wr][wc]=g.turn);
@@ -1105,6 +1174,28 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
           </div>
           {g.turn===0&&!g.winner&&<div style={{background:P1C,color:"#fff",fontSize:8,fontWeight:900,padding:"3px 8px",borderRadius:99}}>TURN</div>}
         </div>
+        {/* Timer — shown when it's my turn and I am P1, or opponent is P1 */}
+        {g.turn===0&&!g.winner&&(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+            <div style={{
+              fontSize:22,fontWeight:900,
+              color:timeLeft<=5?"#FF4444":timeLeft<=10?"#FFD060":P1C,
+              transition:"color .3s",
+              animation:timeLeft<=5?"pulse .5s ease-in-out infinite":"none",
+            }}>{playerIndex===0?timeLeft:"⏳"}</div>
+            {playerIndex===0&&(
+              <div style={{width:"100%",height:3,background:"rgba(255,255,255,.1)",borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",borderRadius:99,
+                  width:`${(timeLeft/30)*100}%`,
+                  background:timeLeft<=5?"#FF4444":timeLeft<=10?"#FFD060":P1C,
+                  transition:"width 1s linear, background .3s"}}/>
+              </div>
+            )}
+            {missedTurns>0&&playerIndex===0&&(
+              <div style={{fontSize:8,color:"#FF4444"}}>⚠ {missedTurns}/3 auto-moves</div>
+            )}
+          </div>
+        )}
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
           <div style={{fontSize:7,color:"rgba(255,255,255,.2)",fontWeight:700}}>WALLS</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:3}}>
@@ -1250,6 +1341,27 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
           </div>
           {g.turn===1&&!g.winner&&<div style={{background:P2C,color:"#fff",fontSize:8,fontWeight:900,padding:"3px 8px",borderRadius:99}}>TURN</div>}
         </div>
+        {g.turn===1&&!g.winner&&(
+          <div style={{width:"100%",display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+            <div style={{
+              fontSize:22,fontWeight:900,
+              color:timeLeft<=5?"#FF4444":timeLeft<=10?"#FFD060":P2C,
+              transition:"color .3s",
+              animation:timeLeft<=5?"pulse .5s ease-in-out infinite":"none",
+            }}>{playerIndex===1?timeLeft:"⏳"}</div>
+            {playerIndex===1&&(
+              <div style={{width:"100%",height:3,background:"rgba(255,255,255,.1)",borderRadius:99,overflow:"hidden"}}>
+                <div style={{height:"100%",borderRadius:99,
+                  width:`${(timeLeft/30)*100}%`,
+                  background:timeLeft<=5?"#FF4444":timeLeft<=10?"#FFD060":P2C,
+                  transition:"width 1s linear, background .3s"}}/>
+              </div>
+            )}
+            {missedTurns>0&&playerIndex===1&&(
+              <div style={{fontSize:8,color:"#FF4444"}}>⚠ {missedTurns}/3 auto-moves</div>
+            )}
+          </div>
+        )}
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
           <div style={{fontSize:7,color:"rgba(255,255,255,.2)",fontWeight:700}}>WALLS</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:3}}>
@@ -1260,12 +1372,103 @@ function OnlineGameScreen({roomId, playerIndex, playerName, initialState, onBack
           </div>
           <div style={{fontSize:10,fontWeight:700,color:g.turn===1?P2C:"rgba(255,255,255,.2)"}}>{g.players[1].walls}</div>
         </div>
-        <div style={{fontSize:8,color:"rgba(255,255,255,.18)",textAlign:"center",lineHeight:1.6}}>
-          Room{"\n"}<span style={{color:GOLD,fontWeight:800,fontSize:10}}>{roomId}</span>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,width:"100%"}}>
+          <div style={{fontSize:8,color:"rgba(255,255,255,.18)",textAlign:"center",lineHeight:1.6}}>
+            Room <span style={{color:GOLD,fontWeight:800,fontSize:10}}>{roomId}</span>
+          </div>
+          {/* Chat toggle button */}
+          <button onClick={()=>setChatOpen(o=>!o)} style={{
+            width:"100%",padding:"7px 0",borderRadius:8,cursor:"pointer",
+            border:`1px solid ${chatOpen?"rgba(255,208,96,.4)":"rgba(255,255,255,.1)"}`,
+            background:chatOpen?"rgba(255,208,96,.15)":"rgba(255,255,255,.06)",
+            fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",
+            position:"relative",
+          }}>
+            💬
+            {unread>0&&!chatOpen&&(
+              <div style={{position:"absolute",top:3,right:6,
+                background:"#FF4444",color:"#fff",
+                fontSize:8,fontWeight:900,borderRadius:99,
+                padding:"1px 5px",minWidth:14,textAlign:"center"}}>
+                {unread}
+              </div>
+            )}
+          </button>
         </div>
       </div>
 
-      {/* WIN OVERLAY */}
+      {/* CHAT PANEL */}
+      {chatOpen&&(
+        <div style={{
+          position:"absolute",right:PANEL_W+GAP,bottom:0,
+          width:Math.min(260,LW*0.35),height:LH-8,
+          zIndex:100,display:"flex",flexDirection:"column",
+          background:"rgba(10,5,2,.95)",
+          border:"1px solid rgba(255,208,96,.2)",
+          borderRadius:14,overflow:"hidden",
+          boxShadow:"-8px 0 32px rgba(0,0,0,.6)",
+        }}>
+          <div style={{padding:"10px 12px",borderBottom:"1px solid rgba(255,255,255,.08)",
+            display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{fontSize:12,fontWeight:800,color:GOLD}}>💬 Chat</div>
+            <button onClick={()=>setChatOpen(false)} style={{
+              background:"none",border:"none",color:"rgba(255,255,255,.4)",
+              fontSize:16,cursor:"pointer",fontFamily:F,lineHeight:1}}>✕</button>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:"8px",display:"flex",flexDirection:"column",gap:6}}>
+            {chat.length===0&&(
+              <div style={{fontSize:11,color:"rgba(255,255,255,.2)",textAlign:"center",marginTop:20}}>
+                No messages yet.<br/>Say hi! 👋
+              </div>
+            )}
+            {chat.map((m,i)=>{
+              const mine=m.from===playerIndex;
+              return(
+                <div key={i} style={{display:"flex",flexDirection:"column",
+                  alignItems:mine?"flex-end":"flex-start"}}>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,.3)",marginBottom:2,
+                    paddingLeft:mine?0:4,paddingRight:mine?4:0}}>
+                    {mine?"You":m.name}
+                  </div>
+                  <div style={{maxWidth:"85%",padding:"7px 10px",
+                    borderRadius:mine?"12px 12px 4px 12px":"12px 12px 12px 4px",
+                    background:mine?`rgba(${playerIndex===0?"0,151,167":"233,30,99"},.25)`:"rgba(255,255,255,.1)",
+                    border:`1px solid ${mine?PC[playerIndex]+"40":"rgba(255,255,255,.08)"}`,
+                    fontSize:12,color:"rgba(255,255,255,.9)",wordBreak:"break-word",lineHeight:1.5,
+                  }}>{m.text}</div>
+                </div>
+              );
+            })}
+            <div ref={chatEndRef}/>
+          </div>
+          <div style={{padding:"6px 8px",borderTop:"1px solid rgba(255,255,255,.06)",
+            display:"flex",flexWrap:"wrap",gap:4}}>
+            {["👋 Hi!","Nice move!","Oops 😅","Good game!","😂😂😂","GG!"].map(p=>(
+              <button key={p} onClick={()=>sendChat(p)} style={{
+                padding:"4px 8px",borderRadius:20,border:"1px solid rgba(255,255,255,.1)",
+                background:"rgba(255,255,255,.06)",color:"rgba(255,255,255,.6)",
+                fontSize:10,cursor:"pointer",fontFamily:F,fontWeight:600,
+              }}>{p}</button>
+            ))}
+          </div>
+          <div style={{padding:"6px 8px 8px",display:"flex",gap:6}}>
+            <input value={chatMsg} onChange={e=>setChatMsg(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&sendChat(chatMsg)}
+              placeholder="Type a message…" maxLength={80}
+              style={{flex:1,padding:"8px 10px",borderRadius:10,
+                border:"1px solid rgba(255,255,255,.12)",
+                background:"rgba(255,255,255,.07)",color:"#fff",
+                fontSize:12,fontFamily:F,outline:"none"}}/>
+            <button onClick={()=>sendChat(chatMsg)} disabled={!chatMsg.trim()} style={{
+              padding:"8px 12px",borderRadius:10,border:"none",cursor:"pointer",
+              background:chatMsg.trim()?GOLDBTN:"rgba(255,255,255,.08)",
+              color:chatMsg.trim()?"#3c2200":"rgba(255,255,255,.25)",
+              fontWeight:800,fontSize:12,fontFamily:F}}>→</button>
+          </div>
+        </div>
+      )}
+
+      {/* ONLINE WIN OVERLAY */}
       {g.winner!=null&&(
         <div style={{position:"absolute",inset:0,zIndex:200,display:"flex",alignItems:"center",
           justifyContent:"center",padding:20,background:"rgba(0,0,0,.88)",backdropFilter:"blur(22px)"}}>
@@ -1848,7 +2051,7 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
             filter:isActive?`drop-shadow(0 0 8px ${base})`:"grayscale(0.5) opacity(0.6)",
             transition:"filter .3s",
           }}>
-            {vsAI&&pi===1?"🤖":"👤"}
+            {vsAI&&pi===1&&!tournament?"🤖":"👤"}
           </div>
           {/* Name only — no subtitle */}
           <div style={{fontSize:11,fontWeight:900,color:isActive?base:"rgba(255,255,255,.3)",textAlign:"center",lineHeight:1.2}}>
@@ -2228,6 +2431,113 @@ function GameScreen({onBack,initialState,onSave,settings,vsAI,names,bets,onGameE
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TOURNAMENT FAKE PLAYERS
+// ─────────────────────────────────────────────────────────────────────────────
+const FAKE_PLAYERS = [
+  "Kwame Asante","Yuki Tanaka","Carlos Vega","Amara Diallo","Lena Hoffmann",
+  "Raj Patel","Zoe Williams","Ivan Petrov","Fatima Al-Hassan","Marco Rossi",
+  "Priya Sharma","Elijah Brooks","Sofia Chen","Ahmed Osman","Hannah Mueller",
+  "Diego Flores","Mei Lin","Kofi Mensah","Anya Ivanova","Tomás García",
+  "Nia Okafor","Kenji Mori","Isabella Santos","Omar Farouq","Emma Lindqvist",
+  "Bayo Adeyemi","Sun Wei","Valentina Cruz","Mikael Johansson","Aaliya Khan",
+];
+
+function getRandomOpponent(exclude=""){
+  const pool=FAKE_PLAYERS.filter(n=>n!==exclude);
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
+function OpponentShuffleScreen({onDone}){
+  const[current,setCurrent]=useState(FAKE_PLAYERS[0]);
+  const[phase,setPhase]=useState("shuffling"); // shuffling | revealing | done
+  const[chosen,setChosen]=useState("");
+  const[vis,setVis]=useState(false);
+
+  useEffect(()=>{
+    setTimeout(()=>setVis(true),60);
+    let count=0;
+    const fast=setInterval(()=>{
+      setCurrent(FAKE_PLAYERS[Math.floor(Math.random()*FAKE_PLAYERS.length)]);
+      count++;
+      if(count>18) clearInterval(fast);
+    },120);
+
+    // Slow down
+    const slow=setTimeout(()=>{
+      let s=0;
+      const slowInterval=setInterval(()=>{
+        setCurrent(FAKE_PLAYERS[Math.floor(Math.random()*FAKE_PLAYERS.length)]);
+        s++;
+        if(s>6) clearInterval(slowInterval);
+      },300);
+    },2400);
+
+    // Final pick
+    const final=setTimeout(()=>{
+      const pick=getRandomOpponent();
+      setChosen(pick);
+      setCurrent(pick);
+      setPhase("revealing");
+      setTimeout(()=>onDone(pick),1600);
+    },4500);
+
+    return()=>{clearInterval(fast);clearTimeout(slow);clearTimeout(final);};
+  },[]);
+
+  return(
+    <div style={{minHeight:"100dvh",background:TABLE_BG,fontFamily:F,
+      display:"flex",flexDirection:"column",alignItems:"center",
+      justifyContent:"center",gap:24,padding:24,
+      opacity:vis?1:0,transition:"opacity .4s"}}>
+      <style>{`
+        @keyframes nameFlash{0%,100%{opacity:.3}50%{opacity:1}}
+        @keyframes revealPop{0%{transform:scale(.7);opacity:0}100%{transform:scale(1);opacity:1}}
+      `}</style>
+
+      <div style={{fontSize:13,fontWeight:700,color:"rgba(255,255,255,.4)",
+        letterSpacing:".12em"}}>🔍 FINDING OPPONENT…</div>
+
+      {/* Shuffling name display */}
+      <div style={{
+        width:"100%",maxWidth:300,
+        background:"rgba(255,255,255,.06)",
+        border:`2px solid ${phase==="revealing"?GOLD+"88":"rgba(255,255,255,.1)"}`,
+        borderRadius:18,padding:"24px 20px",textAlign:"center",
+        transition:"border-color .3s",
+        boxShadow:phase==="revealing"?`0 0 40px ${GOLD}30`:"none",
+      }}>
+        <div style={{fontSize:28,marginBottom:12}}>👤</div>
+        <div style={{
+          fontSize:22,fontWeight:900,
+          color:phase==="revealing"?GOLD:"rgba(255,255,255,.9)",
+          minHeight:32,lineHeight:1.2,
+          animation:phase==="shuffling"?"nameFlash .24s ease-in-out infinite":
+                    phase==="revealing"?"revealPop .4s ease-out forwards":"none",
+          transition:"color .3s",
+        }}>{current}</div>
+        {phase==="revealing"&&(
+          <div style={{fontSize:11,color:"rgba(255,255,255,.4)",marginTop:8}}>
+            Your opponent is ready
+          </div>
+        )}
+      </div>
+
+      {/* Progress dots */}
+      <div style={{display:"flex",gap:8}}>
+        {Array(5).fill(0).map((_,i)=>(
+          <div key={i} style={{
+            width:8,height:8,borderRadius:"50%",
+            background:phase==="revealing"?GOLD:"rgba(255,255,255,.2)",
+            animation:phase==="shuffling"?`pulse ${0.6+i*.1}s ease-in-out ${i*.12}s infinite`:"none",
+            transition:"background .3s",
+          }}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TOURNAMENT NAME SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 function TournamentNameScreen({tournament, onStart, onBack}){
@@ -2321,9 +2631,11 @@ export default function App(){
   });
   const upd=(k,v)=>setSettings(p=>({...p,[k]:v}));
 
+  const[tournOpponent,setTournOpponent]=useState("");
+
   const startTournamentGame=()=>{
     setSavedGame(null);
-    setScreen("game");
+    setScreen("tournshuffle");
   };
 
   return(
@@ -2401,8 +2713,15 @@ export default function App(){
           tournament={tournament}
           onBack={()=>setScreen("tournselect")}
           onStart={name=>{
-            setPlayerNames([name,"AI"]);
+            setPlayerNames([name,""]);
             setSavedGame(null);
+            setScreen("tournshuffle");
+          }}/>}
+
+      {screen==="tournshuffle" &&<OpponentShuffleScreen
+          onDone={opponent=>{
+            setTournOpponent(opponent);
+            setPlayerNames(prev=>[prev[0],opponent]);
             setScreen("game");
           }}/>}
 
